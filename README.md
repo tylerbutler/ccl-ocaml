@@ -30,22 +30,32 @@ CCL is just a key-value mapping. Yet, it's powerful enough to support:
 
 ## Development
 
+### Dependencies
+
 Initialise the project when building for the first time:
 
 ```
 opam switch create .
 ```
 
-Build the project:
+Install test dependencies:
 
 ```
-dune build
+opam install alcotest qcheck qcheck-alcotest
 ```
 
 Install dev dependencies:
 
 ```
 opam install utop ocamlformat ocaml-lsp-server
+```
+
+### Build
+
+Build the project:
+
+```
+dune build
 ```
 
 ## Implementations in Other Languages
