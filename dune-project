@@ -31,6 +31,10 @@
       :with-test
       (>= 0.21)))
    (qcheck-alcotest :with-test)
+   (yojson
+     (and
+      :with-test
+      (>= 2.0.0)))
  )
  (tags
   (config language parser)))
