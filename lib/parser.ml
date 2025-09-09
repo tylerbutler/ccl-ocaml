@@ -64,7 +64,11 @@ let key_val prefix_len =
 
 let kvs_p =
   let* _ = blank in
-  many (key_val 0)
+  let* at_eof = at_end_of_input in
+  if at_eof then
+    return []
+  else
+    many1 (key_val 0)
 
 let nested_kvs_p =
   let* opt_char = peek_char in

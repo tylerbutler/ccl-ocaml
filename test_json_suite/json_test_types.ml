@@ -134,6 +134,9 @@ let parse_error_validation json =
 let parse_parse_validation json =
   match json with
   | `List entries -> Entries (List.map parse_entry entries)
+  | `Assoc _ when member "expected" json <> `Null ->
+      let expected_entries = json |> member "expected" |> to_list |> List.map parse_entry in
+      Entries expected_entries
   | `Assoc _ when member "error" json <> `Null ->
       ParseError (parse_error_validation json)
   | _ -> failwith "Invalid parse validation format"
@@ -165,19 +168,33 @@ let parse_expand_dotted_validation json =
 
 let parse_make_objects_validation json =
   match json with
+  | `Assoc _ when member "expected" json <> `Null ->
+      let expected_obj = json |> member "expected" in
+      ObjectResult expected_obj
   | `Assoc _ when member "error" json <> `Null ->
       ObjectError (parse_error_validation json)
   | obj -> ObjectResult obj
 
-let parse_typed_access_validation json =
+let rec parse_typed_access_validation json =
   match json with
+  | `List (first_test :: _) ->
+      (* Handle array format - use first test *)
+      parse_typed_access_validation first_test
+  | `List [] ->
+      failwith "Empty typed access validation array"
+  | `Assoc _ when member "cases" json <> `Null ->
+      (* Handle counted cases format - use first case *)
+      let cases = json |> member "cases" |> to_list in
+      (match cases with
+       | first_case :: _ -> parse_typed_access_validation first_case
+       | [] -> failwith "Empty cases array in typed access validation")
   | `Assoc _ when member "args" json <> `Null && member "expected" json <> `Null ->
       let args = json |> member "args" |> to_list |> List.map to_string in
       let expected = json |> member "expected" in
       TypedResult { args; expected }
   | `Assoc _ when member "args" json <> `Null && member "error" json <> `Null ->
       let args = json |> member "args" |> to_list |> List.map to_string in
-      let error = parse_error_validation json in
+      let error = { error = true; error_type = None; error_pattern = None; error_message = json |> member "error_message" |> to_string_option } in
       TypedError { args; error }
   | _ -> failwith "Invalid typed access validation format"
 

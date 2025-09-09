@@ -107,10 +107,29 @@ let execute_expand_dotted_validation entries validation =
 let ccl_model_to_json model =
   let rec model_to_json_value = function
     | Ccl.Model.Fix map ->
-        let assoc_list = Ccl.Model.KeyMap.fold (fun key value acc ->
-          (key, model_to_json_value value) :: acc
-        ) map [] in
-        `Assoc (List.rev assoc_list)
+        (* Check if this is a leaf value: single key mapping to empty object *)
+        let bindings = Ccl.Model.KeyMap.bindings map in
+        (match bindings with
+         | [(key, Ccl.Model.Fix empty_map)] when Ccl.Model.KeyMap.is_empty empty_map ->
+             (* This is a leaf value - return the key as a string *)
+             `String key
+         | _ ->
+             (* Check if all values are leaf values and could represent an array *)
+             let leaf_values = List.filter_map (fun (key, value) ->
+               match value with
+               | Ccl.Model.Fix empty_map when Ccl.Model.KeyMap.is_empty empty_map -> Some key
+               | _ -> None
+             ) bindings in
+             
+             if List.length leaf_values = List.length bindings && List.length leaf_values > 1 then
+               (* All are leaf values and more than one - represent as array *)
+               `List (List.map (fun k -> `String k) leaf_values)
+             else
+               (* Mixed or single structure - convert to JSON object normally *)
+               let assoc_list = Ccl.Model.KeyMap.fold (fun key value acc ->
+                 (key, model_to_json_value value) :: acc
+               ) map [] in
+               `Assoc (List.rev assoc_list))
   in
   model_to_json_value model
 
