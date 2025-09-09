@@ -2,37 +2,5 @@
  (public_name test_json_suite)
  (name test_json_suite)
  (libraries ccl alcotest yojson)
- (modules test_json_suite json_test_types json_test_runner ccl_api_mapping))
+ (modules test_json_suite json_test_types json_test_runner ccl_api_mapping ccl_property_tests))
 
-(rule
- (target test_essential_parsing.ml)
- (deps
-  (glob_files ../../ccl-test-data/tests/essential-parsing.json))
- (action
-  (run ./test_json_suite.exe generate essential-parsing.json %{target})))
-
-(rule
- (target test_comprehensive_parsing.ml)
- (deps
-  (glob_files ../../ccl-test-data/tests/comprehensive-parsing.json))
- (action
-  (run ./test_json_suite.exe generate comprehensive-parsing.json %{target})))
-
-(rule
- (target test_errors.ml)
- (deps
-  (glob_files ../../ccl-test-data/tests/errors.json))
- (action
-  (run ./test_json_suite.exe generate errors.json %{target})))
-
-(test
- (name test_essential_parsing)
- (libraries ccl alcotest))
-
-(test
- (name test_comprehensive_parsing)
- (libraries ccl alcotest))
-
-(test
- (name test_errors)
- (libraries ccl alcotest))

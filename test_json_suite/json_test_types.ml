@@ -70,6 +70,7 @@ type associativity_validation = {
 
 type validations = {
   parse : parse_validation option;
+  parse_value : parse_validation option;
   filter : filter_validation option;
   compose : compose_validation option;
   expand_dotted : expand_dotted_validation option;
@@ -89,6 +90,12 @@ type test_metadata = {
   level : int;
   feature : string option;
   difficulty : string option;
+}
+
+type test_config = {
+  skip_optional_features : bool;
+  ignored_features : string list;
+  skip_features : string list;
 }
 
 type test_case = {
@@ -206,6 +213,7 @@ let parse_validations json =
   in
   {
     parse = parse_optional_validation "parse" parse_parse_validation;
+    parse_value = parse_optional_validation "parse_value" parse_parse_validation;
     filter = parse_optional_validation "filter" parse_filter_validation;
     compose = parse_optional_validation "compose" parse_compose_validation;
     expand_dotted = parse_optional_validation "expand_dotted" parse_expand_dotted_validation;

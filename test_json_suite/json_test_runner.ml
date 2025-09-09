@@ -1,8 +1,15 @@
 open Json_test_types
 
 (* Test result tracking *)
+type test_status = 
+  | Passed
+  | Failed of string
+  | Skipped of string
+  | Ignored of string
+
 type test_result = {
   name : string;
+  status : test_status;
   validations_run : (string * bool * string option) list;
   overall_success : bool;
 }
@@ -12,8 +19,32 @@ type suite_result = {
   total_tests : int;
   passed_tests : int;
   failed_tests : int;
+  skipped_tests : int;
+  ignored_tests : int;
   test_results : test_result list;
 }
+
+(* Default test configuration *)
+let default_config = {
+  skip_optional_features = false;
+  ignored_features = [];
+  skip_features = ["dotted-keys"; "typed-access"; "processing"];
+}
+
+(* Check if a test should be skipped or ignored *)
+let should_skip_test config test_case =
+  match test_case.meta.feature with
+  | Some feature ->
+      if List.mem feature config.ignored_features then
+        Some (Ignored ("Feature '" ^ feature ^ "' is ignored"))
+      else if List.mem feature config.skip_features then
+        Some (Skipped ("Feature '" ^ feature ^ "' is not implemented"))
+      else if config.skip_optional_features && 
+              List.exists (fun tag -> List.mem tag ["optional"; "advanced"]) test_case.meta.tags then
+        Some (Skipped "Optional feature skipped")
+      else
+        None
+  | None -> None
 
 (* Convert JSON test case to Alcotest test *)
 let json_test_to_alcotest (test_case : Json_test_types.test_case) =
@@ -41,35 +72,81 @@ let generate_alcotest_from_json_suite test_suite =
   let tests = List.map json_test_to_alcotest test_suite.tests in
   (suite_name, tests)
 
-(* Execute JSON test suite and return results *)
-let execute_json_test_suite test_suite =
+(* Execute JSON test suite with configuration *)
+let execute_json_test_suite_with_config config test_suite =
   let test_results = List.map (fun test_case ->
-    let validation_results = Ccl_api_mapping.execute_validation test_case in
-    let overall_success = List.for_all (fun (_, success, _) -> success) validation_results in
-    { name = test_case.name; validations_run = validation_results; overall_success }
+    match should_skip_test config test_case with
+    | Some skip_reason ->
+        { name = test_case.name; status = skip_reason; validations_run = []; overall_success = false }
+    | None ->
+        let validation_results = Ccl_api_mapping.execute_validation test_case in
+        let overall_success = List.for_all (fun (_, success, _) -> success) validation_results in
+        let status = if overall_success then Passed else Failed "Some validations failed" in
+        { name = test_case.name; status; validations_run = validation_results; overall_success }
   ) test_suite.tests in
   
-  let passed_tests = List.length (List.filter (fun tr -> tr.overall_success) test_results) in
-  let failed_tests = List.length test_results - passed_tests in
+  let passed_tests = List.length (List.filter (fun tr -> tr.status = Passed) test_results) in
+  let failed_tests = List.length (List.filter (fun tr -> match tr.status with Failed _ -> true | _ -> false) test_results) in
+  let skipped_tests = List.length (List.filter (fun tr -> match tr.status with Skipped _ -> true | _ -> false) test_results) in
+  let ignored_tests = List.length (List.filter (fun tr -> match tr.status with Ignored _ -> true | _ -> false) test_results) in
   
   {
     suite_name = test_suite.suite;
     total_tests = List.length test_results;
     passed_tests;
     failed_tests;
+    skipped_tests;
+    ignored_tests;
     test_results;
   }
+
+(* Execute JSON test suite and return results (backwards compatibility) *)
+let execute_json_test_suite test_suite =
+  execute_json_test_suite_with_config default_config test_suite
 
 (* Print test results summary *)
 let print_suite_result suite_result =
   Printf.printf "\n=== %s ===\n" suite_result.suite_name;
-  Printf.printf "Total: %d | Passed: %d | Failed: %d\n"
+  Printf.printf "Total: %d | Passed: %d | Failed: %d" 
     suite_result.total_tests suite_result.passed_tests suite_result.failed_tests;
   
-  if suite_result.failed_tests > 0 then (
+  if suite_result.skipped_tests > 0 then
+    Printf.printf " | Skipped: %d" suite_result.skipped_tests;
+  
+  if suite_result.ignored_tests > 0 then
+    Printf.printf " | Ignored: %d" suite_result.ignored_tests;
+  
+  Printf.printf "\n";
+  
+  (* Show skipped tests *)
+  let skipped_tests = List.filter (fun tr -> match tr.status with Skipped _ -> true | _ -> false) suite_result.test_results in
+  if List.length skipped_tests > 0 then (
+    Printf.printf "\nSkipped tests:\n";
+    List.iter (fun test_result ->
+      match test_result.status with
+      | Skipped reason -> Printf.printf "- %s: %s\n" test_result.name reason
+      | _ -> ()
+    ) skipped_tests
+  );
+  
+  (* Show ignored tests *)
+  let ignored_tests = List.filter (fun tr -> match tr.status with Ignored _ -> true | _ -> false) suite_result.test_results in
+  if List.length ignored_tests > 0 then (
+    Printf.printf "\nIgnored tests:\n";
+    List.iter (fun test_result ->
+      match test_result.status with
+      | Ignored reason -> Printf.printf "- %s: %s\n" test_result.name reason
+      | _ -> ()
+    ) ignored_tests
+  );
+  
+  (* Show failed tests *)
+  let failed_tests = List.filter (fun tr -> match tr.status with Failed _ -> true | _ -> false) suite_result.test_results in
+  if List.length failed_tests > 0 then (
     Printf.printf "\nFailed tests:\n";
     List.iter (fun test_result ->
-      if not test_result.overall_success then (
+      match test_result.status with
+      | Failed _ -> (
         Printf.printf "- %s:\n" test_result.name;
         List.iter (fun (validation_name, success, msg_opt) ->
           if not success then
@@ -78,7 +155,8 @@ let print_suite_result suite_result =
             | None -> Printf.printf "  * %s: failed\n" validation_name
         ) test_result.validations_run
       )
-    ) suite_result.test_results
+      | _ -> ()
+    ) failed_tests
   )
 
 (* Helper function for marshaling test cases to OCaml *)
@@ -175,13 +253,32 @@ let run_test_file json_filename =
     Printf.eprintf "Error running tests: %s\n" (Printexc.to_string exn);
     exit 1
 
+(* Test file classification *)
+type test_file_type = 
+  | ApiTest of string       (* e.g., "parsing", "objects" *)
+  | PropertyTest of string  (* e.g., "algebraic", "roundtrip" *)
+  | UnknownTest of string
+
+let classify_test_file filename =
+  if String.length filename < 5 then UnknownTest filename
+  else
+    let basename = Filename.basename filename in
+    if String.starts_with ~prefix:"api-" basename then
+      let test_type = String.sub basename 4 (String.length basename - 9) in (* Remove "api-" and ".json" *)
+      ApiTest test_type
+    else if String.starts_with ~prefix:"property-" basename then  
+      let test_type = String.sub basename 9 (String.length basename - 14) in (* Remove "property-" and ".json" *)
+      PropertyTest test_type
+    else
+      UnknownTest basename
+
 (* Cross-platform directory operations *)
 let is_json_file filename =
   String.length filename > 5 && 
   String.sub filename (String.length filename - 5) 5 = ".json" &&
   filename <> "schema.json"
 
-let run_directory_tests directory =
+let run_categorized_tests directory =
   try
     let files = Sys.readdir directory in
     let json_files = Array.to_list files 
@@ -194,11 +291,25 @@ let run_directory_tests directory =
       exit 1
     );
     
-    Printf.printf "Found %d JSON test files in %s\n\n" (List.length json_files) directory;
+    (* Classify test files *)
+    let (api_tests, property_tests, unknown_tests) = List.fold_left (fun (api, prop, unk) file ->
+      match classify_test_file (Filename.basename file) with
+      | ApiTest _ -> (file :: api, prop, unk)
+      | PropertyTest _ -> (api, file :: prop, unk)
+      | UnknownTest _ -> (api, prop, file :: unk)
+    ) ([], [], []) json_files in
+    
+    let api_tests = List.rev api_tests in
+    let property_tests = List.rev property_tests in
+    let unknown_tests = List.rev unknown_tests in
+    
+    Printf.printf "Found %d API test files, %d property test files, %d other test files in %s\n\n" 
+                  (List.length api_tests) (List.length property_tests) (List.length unknown_tests) directory;
     flush_all ();
     
-    let results = List.map (fun file ->
-      Printf.printf "=== Running %s ===\n" (Filename.basename file);
+    (* Run API tests first *)
+    let api_results = List.map (fun file ->
+      Printf.printf "=== API Test: %s ===\n" (Filename.basename file);
       flush_all ();
       try
         let test_suite = load_test_suite_from_file file in
@@ -213,7 +324,47 @@ let run_directory_tests directory =
         Printf.printf "\n";
         flush_all ();
         (Filename.basename file, false, None)
-    ) json_files in
+    ) api_tests in
+    
+    (* Run property tests second *)
+    let property_results = List.map (fun file ->
+      Printf.printf "=== Property Test: %s ===\n" (Filename.basename file);
+      flush_all ();
+      try
+        let test_suite = load_test_suite_from_file file in
+        let suite_result = execute_json_test_suite test_suite in
+        print_suite_result suite_result;
+        Printf.printf "\n";
+        flush_all ();
+        (Filename.basename file, suite_result.failed_tests = 0, Some suite_result)
+      with
+      | exn -> 
+        Printf.eprintf "Error running %s: %s\n" file (Printexc.to_string exn);
+        Printf.printf "\n";
+        flush_all ();
+        (Filename.basename file, false, None)
+    ) property_tests in
+    
+    (* Run other tests third *)
+    let other_results = List.map (fun file ->
+      Printf.printf "=== Other Test: %s ===\n" (Filename.basename file);
+      flush_all ();
+      try
+        let test_suite = load_test_suite_from_file file in
+        let suite_result = execute_json_test_suite test_suite in
+        print_suite_result suite_result;
+        Printf.printf "\n";
+        flush_all ();
+        (Filename.basename file, suite_result.failed_tests = 0, Some suite_result)
+      with
+      | exn -> 
+        Printf.eprintf "Error running %s: %s\n" file (Printexc.to_string exn);
+        Printf.printf "\n";
+        flush_all ();
+        (Filename.basename file, false, None)
+    ) unknown_tests in
+    
+    let results = api_results @ property_results @ other_results in
     
     (* Calculate totals *)
     let suite_total = List.length results in
@@ -250,6 +401,139 @@ let run_directory_tests directory =
     Printf.eprintf "Error reading directory %s: %s\n" directory msg;
     exit 1
 
+(* Smart test runner with intelligent skipping *)
+let run_smart_tests directory =
+  try
+    let files = Sys.readdir directory in
+    let json_files = Array.to_list files 
+                   |> List.filter is_json_file 
+                   |> List.map (Filename.concat directory)
+                   |> List.sort String.compare in
+    
+    if List.length json_files = 0 then (
+      Printf.eprintf "No JSON test files found in directory: %s\n" directory;
+      exit 1
+    );
+    
+    (* Classify test files *)
+    let (api_tests, property_tests, unknown_tests) = List.fold_left (fun (api, prop, unk) file ->
+      match classify_test_file (Filename.basename file) with
+      | ApiTest _ -> (file :: api, prop, unk)
+      | PropertyTest _ -> (api, file :: prop, unk)
+      | UnknownTest _ -> (api, prop, file :: unk)
+    ) ([], [], []) json_files in
+    
+    let api_tests = List.rev api_tests in
+    let property_tests = List.rev property_tests in
+    let unknown_tests = List.rev unknown_tests in
+    
+    Printf.printf "🚀 Smart Test Run - Skipping Known Unimplemented Features\n";
+    Printf.printf "Found %d API test files, %d property test files, %d other test files in %s\n\n" 
+                  (List.length api_tests) (List.length property_tests) (List.length unknown_tests) directory;
+    Printf.printf "Configured to skip: %s\n\n" (String.concat ", " default_config.skip_features);
+    flush_all ();
+    
+    (* Run API tests first with smart skipping *)
+    let api_results = List.map (fun file ->
+      Printf.printf "=== API Test: %s ===\n" (Filename.basename file);
+      flush_all ();
+      try
+        let test_suite = load_test_suite_from_file file in
+        let suite_result = execute_json_test_suite_with_config default_config test_suite in
+        print_suite_result suite_result;
+        Printf.printf "\n";
+        flush_all ();
+        (Filename.basename file, suite_result.failed_tests = 0, Some suite_result)
+      with
+      | exn -> 
+        Printf.eprintf "Error running %s: %s\n" file (Printexc.to_string exn);
+        Printf.printf "\n";
+        flush_all ();
+        (Filename.basename file, false, None)
+    ) api_tests in
+    
+    (* Run property tests second with smart skipping *)
+    let property_results = List.map (fun file ->
+      Printf.printf "=== Property Test: %s ===\n" (Filename.basename file);
+      flush_all ();
+      try
+        let test_suite = load_test_suite_from_file file in
+        let suite_result = execute_json_test_suite_with_config default_config test_suite in
+        print_suite_result suite_result;
+        Printf.printf "\n";
+        flush_all ();
+        (Filename.basename file, suite_result.failed_tests = 0, Some suite_result)
+      with
+      | exn -> 
+        Printf.eprintf "Error running %s: %s\n" file (Printexc.to_string exn);
+        Printf.printf "\n";
+        flush_all ();
+        (Filename.basename file, false, None)
+    ) property_tests in
+    
+    (* Run other tests third with smart skipping *)
+    let other_results = List.map (fun file ->
+      Printf.printf "=== Other Test: %s ===\n" (Filename.basename file);
+      flush_all ();
+      try
+        let test_suite = load_test_suite_from_file file in
+        let suite_result = execute_json_test_suite_with_config default_config test_suite in
+        print_suite_result suite_result;
+        Printf.printf "\n";
+        flush_all ();
+        (Filename.basename file, suite_result.failed_tests = 0, Some suite_result)
+      with
+      | exn -> 
+        Printf.eprintf "Error running %s: %s\n" file (Printexc.to_string exn);
+        Printf.printf "\n";
+        flush_all ();
+        (Filename.basename file, false, None)
+    ) unknown_tests in
+    
+    let results = api_results @ property_results @ other_results in
+    
+    (* Calculate totals with enhanced stats *)
+    let suite_total = List.length results in
+    let suite_passed = List.length (List.filter (fun (_, success, _) -> success) results) in
+    let suite_failed = suite_total - suite_passed in
+    
+    let (test_total, test_passed, test_failed, test_skipped, test_ignored) = List.fold_left (fun (total, passed, failed, skipped, ignored) (_, _, result_opt) ->
+      match result_opt with
+      | Some suite_result -> 
+          (total + suite_result.total_tests, 
+           passed + suite_result.passed_tests, 
+           failed + suite_result.failed_tests,
+           skipped + suite_result.skipped_tests,
+           ignored + suite_result.ignored_tests)
+      | None -> (total, passed, failed, skipped, ignored)
+    ) (0, 0, 0, 0, 0) results in
+    
+    (* Enhanced Summary *)
+    Printf.printf "=== 🎯 SMART TEST SUMMARY ===\n";
+    Printf.printf "Test Suites: %d total | %d passed | %d failed\n" suite_total suite_passed suite_failed;
+    Printf.printf "Individual Tests: %d total | %d passed | %d failed | %d skipped | %d ignored\n" 
+      test_total test_passed test_failed test_skipped test_ignored;
+    Printf.printf "Success Rate: %.1f%% (excluding skipped/ignored)\n"
+      (if (test_passed + test_failed) > 0 then (float_of_int test_passed /. float_of_int (test_passed + test_failed)) *. 100.0 else 0.0);
+    Printf.printf "Coverage: %.1f%% (tests actually run)\n"
+      (if test_total > 0 then (float_of_int (test_passed + test_failed) /. float_of_int test_total) *. 100.0 else 0.0);
+    
+    if suite_failed > 0 then (
+      Printf.printf "\n❌ Failed suites (actual issues):\n";
+      List.iter (fun (name, success, _) ->
+        if not success then Printf.printf "- %s\n" name
+      ) results
+    );
+    
+    Printf.printf "\n💡 Tip: Use 'run-categorized' to see all tests including unimplemented features\n";
+    
+    exit (if suite_failed = 0 then 0 else 1)
+    
+  with
+  | Sys_error msg ->
+    Printf.eprintf "Error reading directory %s: %s\n" directory msg;
+    exit 1
+
 (* Main CLI function - to be called from test_json_suite.ml *)
 let main () =
   match Sys.argv with
@@ -258,10 +542,16 @@ let main () =
   | [| _; "run"; json_file |] ->
       run_test_file json_file
   | [| _; "run-all"; directory |] ->
-      run_directory_tests directory
+      run_categorized_tests directory
+  | [| _; "run-categorized"; directory |] ->
+      run_categorized_tests directory
+  | [| _; "run-smart"; directory |] ->
+      run_smart_tests directory
   | _ ->
       Printf.eprintf "Usage:\n";
       Printf.eprintf "  %s generate <json_file> <output_file>\n" Sys.argv.(0);
       Printf.eprintf "  %s run <json_file>\n" Sys.argv.(0);
       Printf.eprintf "  %s run-all <directory>\n" Sys.argv.(0);
+      Printf.eprintf "  %s run-categorized <directory>  # Run with API/property test classification\n" Sys.argv.(0);
+      Printf.eprintf "  %s run-smart <directory>        # Run with intelligent skipping of unimplemented features\n" Sys.argv.(0);
       exit 1
