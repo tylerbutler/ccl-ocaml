@@ -14,11 +14,11 @@ type error_validation = {
 }
 
 type parse_validation = 
-  | Entries of entry list
+  | Entries of { count : int; expected : entry list }
   | ParseError of error_validation
 
 type filter_validation = 
-  | FilteredEntries of entry list
+  | FilteredEntries of { count : int; expected : entry list }
   | FilterError of error_validation
 
 type compose_validation = 
@@ -30,22 +30,25 @@ type compose_validation =
   | ComposeError of error_validation
 
 type expand_dotted_validation = 
-  | ExpandedEntries of entry list
+  | ExpandedEntries of { count : int; expected : entry list }
   | ExpandError of error_validation
 
 type make_objects_validation = 
-  | ObjectResult of Yojson.Safe.t
+  | ObjectResult of { count : int; expected : Yojson.Safe.t }
   | ObjectError of error_validation
 
-type typed_access_validation = 
-  | TypedResult of {
+type typed_access_case = 
+  | TypedResultCase of {
       args : string list;
       expected : Yojson.Safe.t;
     }
-  | TypedError of {
+  | TypedErrorCase of {
       args : string list;
       error : error_validation;
     }
+
+type typed_access_validation = 
+  | TypedCases of { count : int; cases : typed_access_case list }
 
 type pretty_print_validation = 
   | PrettyResult of string
@@ -96,6 +99,8 @@ type test_config = {
   skip_optional_features : bool;
   ignored_features : string list;
   skip_features : string list;
+  skip_proposed : bool;  (* Skip tests with "proposed" or "proposed-behavior" tags *)
+  skip_tags : string list;  (* Skip tests with these tags *)
 }
 
 type test_case = {
@@ -133,17 +138,20 @@ let parse_error_validation json =
 
 let parse_parse_validation json =
   match json with
-  | `List entries -> Entries (List.map parse_entry entries)
   | `Assoc _ when member "expected" json <> `Null ->
       let expected_entries = json |> member "expected" |> to_list |> List.map parse_entry in
-      Entries expected_entries
+      let count = json |> member "count" |> to_int in
+      Entries { count; expected = expected_entries }
   | `Assoc _ when member "error" json <> `Null ->
       ParseError (parse_error_validation json)
   | _ -> failwith "Invalid parse validation format"
 
 let parse_filter_validation json =
   match json with
-  | `List entries -> FilteredEntries (List.map parse_entry entries)
+  | `Assoc _ when member "expected" json <> `Null ->
+      let expected_entries = json |> member "expected" |> to_list |> List.map parse_entry in
+      let count = json |> member "count" |> to_int in
+      FilteredEntries { count; expected = expected_entries }
   | `Assoc _ when member "error" json <> `Null ->
       FilterError (parse_error_validation json)
   | _ -> failwith "Invalid filter validation format"
@@ -161,7 +169,10 @@ let parse_compose_validation json =
 
 let parse_expand_dotted_validation json =
   match json with
-  | `List entries -> ExpandedEntries (List.map parse_entry entries)
+  | `Assoc _ when member "expected" json <> `Null ->
+      let expected_entries = json |> member "expected" |> to_list |> List.map parse_entry in
+      let count = json |> member "count" |> to_int in
+      ExpandedEntries { count; expected = expected_entries }
   | `Assoc _ when member "error" json <> `Null ->
       ExpandError (parse_error_validation json)
   | _ -> failwith "Invalid expand_dotted validation format"
@@ -170,32 +181,31 @@ let parse_make_objects_validation json =
   match json with
   | `Assoc _ when member "expected" json <> `Null ->
       let expected_obj = json |> member "expected" in
-      ObjectResult expected_obj
+      let count = json |> member "count" |> to_int in
+      ObjectResult { count; expected = expected_obj }
   | `Assoc _ when member "error" json <> `Null ->
       ObjectError (parse_error_validation json)
-  | obj -> ObjectResult obj
+  | _ -> failwith "Invalid make_objects validation format"
 
-let rec parse_typed_access_validation json =
+let parse_typed_access_case json =
   match json with
-  | `List (first_test :: _) ->
-      (* Handle array format - use first test *)
-      parse_typed_access_validation first_test
-  | `List [] ->
-      failwith "Empty typed access validation array"
-  | `Assoc _ when member "cases" json <> `Null ->
-      (* Handle counted cases format - use first case *)
-      let cases = json |> member "cases" |> to_list in
-      (match cases with
-       | first_case :: _ -> parse_typed_access_validation first_case
-       | [] -> failwith "Empty cases array in typed access validation")
   | `Assoc _ when member "args" json <> `Null && member "expected" json <> `Null ->
       let args = json |> member "args" |> to_list |> List.map to_string in
       let expected = json |> member "expected" in
-      TypedResult { args; expected }
+      TypedResultCase { args; expected }
   | `Assoc _ when member "args" json <> `Null && member "error" json <> `Null ->
       let args = json |> member "args" |> to_list |> List.map to_string in
       let error = { error = true; error_type = None; error_pattern = None; error_message = json |> member "error_message" |> to_string_option } in
-      TypedError { args; error }
+      TypedErrorCase { args; error }
+  | _ -> failwith "Invalid typed access case format"
+
+let parse_typed_access_validation json =
+  match json with
+  | `Assoc _ when member "cases" json <> `Null ->
+      let cases_json = json |> member "cases" |> to_list in
+      let cases = List.map parse_typed_access_case cases_json in
+      let count = json |> member "count" |> to_int in
+      TypedCases { count; cases }
   | _ -> failwith "Invalid typed access validation format"
 
 let parse_pretty_print_validation json =

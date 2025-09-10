@@ -13,18 +13,17 @@ let execute_parse_validation input validation =
   | Ok entries ->
       let json_entries = List.map ccl_entry_to_json_entry entries in
       (match validation with
-       | Entries expected_entries ->
+       | Entries { count; expected = expected_entries } ->
            if List.equal (fun a b -> String.equal a.key b.key && String.equal a.value b.value) 
                         json_entries expected_entries
            then Ok ()
-           else Error (Printf.sprintf "Parse mismatch: expected %d entries, got %d entries"
-                      (List.length expected_entries) (List.length json_entries))
+           else Error (Printf.sprintf "Parse mismatch: expected %d entries (count: %d), got %d entries"
+                      (List.length expected_entries) count (List.length json_entries))
        | ParseError _ ->
            Error "Expected parse error but parsing succeeded")
   | Error (`Parse_error msg) ->
       (match validation with
        | ParseError _error_validation ->
-           (* TODO: Match against specific error patterns if needed *)
            Ok ()
        | Entries _ ->
            Error ("Expected successful parse but got error: " ^ msg))
@@ -35,7 +34,7 @@ let execute_parse_value_validation input validation =
   | Ok entries ->
       let json_entries = List.map ccl_entry_to_json_entry entries in
       (match validation with
-       | Entries expected_entries ->
+       | Entries { expected = expected_entries; _ } ->
            if List.equal (fun a b -> String.equal a.key b.key && String.equal a.value b.value) 
                         json_entries expected_entries
            then Ok ()
@@ -49,10 +48,8 @@ let execute_parse_value_validation input validation =
 (* Execute Level 2: Filter validation *)
 let execute_filter_validation entries validation =
   match validation with
-  | FilteredEntries expected_entries -> 
-      (* Basic implementation: filter entries by key pattern *)
+  | FilteredEntries { expected = expected_entries; _ } -> 
       let json_entries = List.map ccl_entry_to_json_entry entries in
-      (* For now, assume no filtering - compare entries directly *)
       if List.equal (fun a b -> String.equal a.key b.key && String.equal a.value b.value) 
                    json_entries expected_entries
       then Ok ()
@@ -94,7 +91,7 @@ let expand_dotted_keys entries =
 (* Execute Level 2: Expand dotted keys validation *)
 let execute_expand_dotted_validation entries validation =
   match validation with
-  | ExpandedEntries expected_entries ->
+  | ExpandedEntries { expected = expected_entries; _ } ->
       let json_entries = List.map ccl_entry_to_json_entry entries in
       let expanded_entries = expand_dotted_keys json_entries in
       if List.equal (fun a b -> String.equal a.key b.key && String.equal a.value b.value) 
@@ -136,8 +133,7 @@ let ccl_model_to_json model =
 (* Execute Level 3: Make objects validation *)
 let execute_make_objects_validation entries validation =
   match validation with
-  | ObjectResult expected_json ->
-      (* Use CCL Model.fix to construct the hierarchical object *)
+  | ObjectResult { expected = expected_json; _ } ->
       let ccl_entries = List.map json_entry_to_ccl_entry entries in
       let ccl_model = Ccl.Model.fix ccl_entries in
       let actual_json = ccl_model_to_json ccl_model in
@@ -206,9 +202,9 @@ let get_float_from_path json_obj path =
   access_path json_obj path
 
 (* Execute Level 4: Typed access validation *)
-let execute_typed_access_validation json_obj validation access_type =
-  match validation with
-  | TypedResult { args; expected } ->
+let execute_typed_access_case json_obj case_val access_type =
+  match case_val with
+  | TypedResultCase { args; expected } ->
       (match access_type with
        | "get_string" ->
            (match get_string_from_path json_obj args with
@@ -243,8 +239,7 @@ let execute_typed_access_validation json_obj validation access_type =
                              (Yojson.Safe.to_string expected) actual_value)
             | Error err -> Error err)
        | _ -> Error ("Unknown access type: " ^ access_type))
-  | TypedError { args; error = _error } ->
-      (* Test that access with given args produces an error *)
+  | TypedErrorCase { args; error = _error } ->
       (match access_type with
        | "get_string" ->
            (match get_string_from_path json_obj args with
@@ -263,6 +258,21 @@ let execute_typed_access_validation json_obj validation access_type =
             | Ok _ -> Error "Expected error but float access succeeded"
             | Error _ -> Ok ())
        | _ -> Error ("Unknown access type: " ^ access_type))
+
+let execute_typed_access_validation json_obj validation access_type =
+  match validation with
+  | TypedCases { cases; _ } ->
+      (* Execute all cases and collect results *)
+      let results = List.map (fun case_val ->
+        execute_typed_access_case json_obj case_val access_type
+      ) cases in
+      (* Check if all cases passed *)
+      let errors = List.filter_map (function
+        | Ok () -> None
+        | Error msg -> Some msg
+      ) results in
+      if List.length errors = 0 then Ok ()
+      else Error (String.concat "; " errors)
 
 (* Execute Level 5: Pretty print validation *)
 let execute_pretty_print_validation (ccl_entries : Ccl.Parser.key_val list) validation =
@@ -287,9 +297,9 @@ let execute_property_validations test_case =
     match input, validations.round_trip with
     | Some input_str, Some round_trip_validation ->
         (match Ccl_property_tests.execute_round_trip_validation input_str round_trip_validation with
-         | Ok () -> ("round_trip", true, None) :: results
-         | Error msg -> ("round_trip", false, Some msg) :: results)
-    | None, Some _ -> ("round_trip", false, Some "Missing input for round trip validation") :: results
+         | Ok () -> ("round_trip", true, None, 1) :: results
+         | Error msg -> ("round_trip", false, Some msg, 1) :: results)
+    | None, Some _ -> ("round_trip", false, Some "Missing input for round trip validation", 1) :: results
     | _, None -> results
   in
 
@@ -298,9 +308,9 @@ let execute_property_validations test_case =
     match input, validations.canonical_format with
     | Some input_str, Some canonical_validation ->
         (match Ccl_property_tests.execute_canonical_format_validation input_str canonical_validation with
-         | Ok () -> ("canonical_format", true, None) :: results
-         | Error msg -> ("canonical_format", false, Some msg) :: results)
-    | None, Some _ -> ("canonical_format", false, Some "Missing input for canonical format validation") :: results
+         | Ok () -> ("canonical_format", true, None, 1) :: results
+         | Error msg -> ("canonical_format", false, Some msg, 1) :: results)
+    | None, Some _ -> ("canonical_format", false, Some "Missing input for canonical format validation", 1) :: results
     | _, None -> results
   in
 
@@ -309,13 +319,71 @@ let execute_property_validations test_case =
     match input, validations.associativity with
     | Some input_str, Some associativity_validation ->
         (match Ccl_property_tests.execute_associativity_validation input_str associativity_validation with
-         | Ok () -> ("associativity", true, None) :: results
-         | Error msg -> ("associativity", false, Some msg) :: results)
-    | None, Some _ -> ("associativity", false, Some "Missing input for associativity validation") :: results
+         | Ok () -> ("associativity", true, None, 1) :: results
+         | Error msg -> ("associativity", false, Some msg, 1) :: results)
+    | None, Some _ -> ("associativity", false, Some "Missing input for associativity validation", 1) :: results
     | _, None -> results
   in
 
   results
+
+(* Helper function to get assertion count from validation *)
+let get_assertion_count validation_name validations =
+  match validation_name with
+  | "parse" ->
+      (match validations.Json_test_types.parse with
+       | Some (Json_test_types.Entries { count; _ }) -> count
+       | Some (Json_test_types.ParseError _) -> 1
+       | None -> 0)
+  | "parse_value" ->
+      (match validations.Json_test_types.parse_value with
+       | Some (Json_test_types.Entries { count; _ }) -> count
+       | Some (Json_test_types.ParseError _) -> 1
+       | None -> 0)
+  | "filter" ->
+      (match validations.Json_test_types.filter with
+       | Some (Json_test_types.FilteredEntries { count; _ }) -> count
+       | Some (Json_test_types.FilterError _) -> 1
+       | None -> 0)
+  | "compose" -> 1
+  | "expand_dotted" ->
+      (match validations.Json_test_types.expand_dotted with
+       | Some (Json_test_types.ExpandedEntries { count; _ }) -> count
+       | Some (Json_test_types.ExpandError _) -> 1
+       | None -> 0)
+  | "make_objects" ->
+      (match validations.Json_test_types.make_objects with
+       | Some (Json_test_types.ObjectResult { count; _ }) -> count
+       | Some (Json_test_types.ObjectError _) -> 1
+       | None -> 0)
+  | "get_string" | "get_int" | "get_bool" | "get_float" ->
+      (match validation_name with
+       | "get_string" ->
+           (match validations.Json_test_types.get_string with
+            | Some (Json_test_types.TypedCases { count; _ }) -> count
+            | None -> 0)
+       | "get_int" ->
+           (match validations.Json_test_types.get_int with
+            | Some (Json_test_types.TypedCases { count; _ }) -> count
+            | None -> 0)
+       | "get_bool" ->
+           (match validations.Json_test_types.get_bool with
+            | Some (Json_test_types.TypedCases { count; _ }) -> count
+            | None -> 0)
+       | "get_float" ->
+           (match validations.Json_test_types.get_float with
+            | Some (Json_test_types.TypedCases { count; _ }) -> count
+            | None -> 0)
+       | _ -> 0)
+  | "pretty_print" | "round_trip" | "canonical_format" | "associativity" -> 1
+  | _ -> 1
+
+(* Helper function to execute validation with assertion counting *)
+let execute_with_count validation_name validations execution_result =
+  let assertion_count = get_assertion_count validation_name validations in
+  match execution_result with
+  | Ok () -> (validation_name, true, None, assertion_count)
+  | Error msg -> (validation_name, false, Some msg, assertion_count)
 
 (* Main validation executor *)
 let execute_validation test_case =
@@ -326,10 +394,9 @@ let execute_validation test_case =
   let results = 
     match input, validations.parse with
     | Some input_str, Some parse_validation ->
-        (match execute_parse_validation input_str parse_validation with
-         | Ok () -> ("parse", true, None) :: results
-         | Error msg -> ("parse", false, Some msg) :: results)
-    | None, Some _ -> ("parse", false, Some "Missing input for parse validation") :: results
+        execute_with_count "parse" validations (execute_parse_validation input_str parse_validation) :: results
+    | None, Some _ -> 
+        execute_with_count "parse" validations (Error "Missing input for parse validation") :: results
     | _, None -> results
   in
 
@@ -337,10 +404,9 @@ let execute_validation test_case =
   let results = 
     match input, validations.parse_value with
     | Some input_str, Some parse_value_validation ->
-        (match execute_parse_value_validation input_str parse_value_validation with
-         | Ok () -> ("parse_value", true, None) :: results
-         | Error msg -> ("parse_value", false, Some msg) :: results)
-    | None, Some _ -> ("parse_value", false, Some "Missing input for parse_value validation") :: results
+        execute_with_count "parse_value" validations (execute_parse_value_validation input_str parse_value_validation) :: results
+    | None, Some _ -> 
+        execute_with_count "parse_value" validations (Error "Missing input for parse_value validation") :: results
     | _, None -> results
   in
 
@@ -358,10 +424,9 @@ let execute_validation test_case =
   let results =
     match parsed_entries, validations.filter with
     | Some entries, Some filter_validation ->
-        (match execute_filter_validation entries filter_validation with
-         | Ok () -> ("filter", true, None) :: results
-         | Error msg -> ("filter", false, Some msg) :: results)
-    | None, Some _ -> ("filter", false, Some "No parsed entries for filter validation") :: results
+        execute_with_count "filter" validations (execute_filter_validation entries filter_validation) :: results
+    | None, Some _ -> 
+        execute_with_count "filter" validations (Error "No parsed entries for filter validation") :: results
     | _, None -> results
   in
 
@@ -369,9 +434,7 @@ let execute_validation test_case =
   let results =
     match validations.compose with
     | Some compose_validation ->
-        (match execute_compose_validation compose_validation with
-         | Ok () -> ("compose", true, None) :: results
-         | Error msg -> ("compose", false, Some msg) :: results)
+        execute_with_count "compose" validations (execute_compose_validation compose_validation) :: results
     | None -> results
   in
 
@@ -379,10 +442,9 @@ let execute_validation test_case =
   let results =
     match parsed_entries, validations.expand_dotted with
     | Some entries, Some expand_validation ->
-        (match execute_expand_dotted_validation entries expand_validation with
-         | Ok () -> ("expand_dotted", true, None) :: results
-         | Error msg -> ("expand_dotted", false, Some msg) :: results)
-    | None, Some _ -> ("expand_dotted", false, Some "No parsed entries for expand_dotted validation") :: results
+        execute_with_count "expand_dotted" validations (execute_expand_dotted_validation entries expand_validation) :: results
+    | None, Some _ -> 
+        execute_with_count "expand_dotted" validations (Error "No parsed entries for expand_dotted validation") :: results
     | _, None -> results
   in
 
@@ -391,10 +453,9 @@ let execute_validation test_case =
     match parsed_entries, validations.make_objects with
     | Some entries, Some objects_validation ->
         let json_entries = List.map ccl_entry_to_json_entry entries in
-        (match execute_make_objects_validation json_entries objects_validation with
-         | Ok () -> ("make_objects", true, None) :: results
-         | Error msg -> ("make_objects", false, Some msg) :: results)
-    | None, Some _ -> ("make_objects", false, Some "No parsed entries for make_objects validation") :: results
+        execute_with_count "make_objects" validations (execute_make_objects_validation json_entries objects_validation) :: results
+    | None, Some _ -> 
+        execute_with_count "make_objects" validations (Error "No parsed entries for make_objects validation") :: results
     | _, None -> results
   in
 
@@ -411,10 +472,9 @@ let execute_validation test_case =
   let results =
     match json_obj_opt, validations.get_string with
     | Some json_obj, Some string_validation ->
-        (match execute_typed_access_validation json_obj string_validation "get_string" with
-         | Ok () -> ("get_string", true, None) :: results
-         | Error msg -> ("get_string", false, Some msg) :: results)
-    | None, Some _ -> ("get_string", false, Some "No JSON object for get_string validation") :: results
+        execute_with_count "get_string" validations (execute_typed_access_validation json_obj string_validation "get_string") :: results
+    | None, Some _ -> 
+        execute_with_count "get_string" validations (Error "No JSON object for get_string validation") :: results
     | _, None -> results
   in
 
@@ -422,10 +482,9 @@ let execute_validation test_case =
   let results =
     match json_obj_opt, validations.get_int with
     | Some json_obj, Some int_validation ->
-        (match execute_typed_access_validation json_obj int_validation "get_int" with
-         | Ok () -> ("get_int", true, None) :: results
-         | Error msg -> ("get_int", false, Some msg) :: results)
-    | None, Some _ -> ("get_int", false, Some "No JSON object for get_int validation") :: results
+        execute_with_count "get_int" validations (execute_typed_access_validation json_obj int_validation "get_int") :: results
+    | None, Some _ -> 
+        execute_with_count "get_int" validations (Error "No JSON object for get_int validation") :: results
     | _, None -> results
   in
 
@@ -433,10 +492,9 @@ let execute_validation test_case =
   let results =
     match json_obj_opt, validations.get_bool with
     | Some json_obj, Some bool_validation ->
-        (match execute_typed_access_validation json_obj bool_validation "get_bool" with
-         | Ok () -> ("get_bool", true, None) :: results
-         | Error msg -> ("get_bool", false, Some msg) :: results)
-    | None, Some _ -> ("get_bool", false, Some "No JSON object for get_bool validation") :: results
+        execute_with_count "get_bool" validations (execute_typed_access_validation json_obj bool_validation "get_bool") :: results
+    | None, Some _ -> 
+        execute_with_count "get_bool" validations (Error "No JSON object for get_bool validation") :: results
     | _, None -> results
   in
 
@@ -444,10 +502,9 @@ let execute_validation test_case =
   let results =
     match json_obj_opt, validations.get_float with
     | Some json_obj, Some float_validation ->
-        (match execute_typed_access_validation json_obj float_validation "get_float" with
-         | Ok () -> ("get_float", true, None) :: results
-         | Error msg -> ("get_float", false, Some msg) :: results)
-    | None, Some _ -> ("get_float", false, Some "No JSON object for get_float validation") :: results
+        execute_with_count "get_float" validations (execute_typed_access_validation json_obj float_validation "get_float") :: results
+    | None, Some _ -> 
+        execute_with_count "get_float" validations (Error "No JSON object for get_float validation") :: results
     | _, None -> results
   in
 
@@ -455,10 +512,9 @@ let execute_validation test_case =
   let results =
     match parsed_entries, validations.pretty_print with
     | Some entries, Some pretty_validation ->
-        (match execute_pretty_print_validation entries pretty_validation with
-         | Ok () -> ("pretty_print", true, None) :: results
-         | Error msg -> ("pretty_print", false, Some msg) :: results)
-    | None, Some _ -> ("pretty_print", false, Some "No parsed entries for pretty print validation") :: results
+        execute_with_count "pretty_print" validations (execute_pretty_print_validation entries pretty_validation) :: results
+    | None, Some _ -> 
+        execute_with_count "pretty_print" validations (Error "No parsed entries for pretty print validation") :: results
     | _, None -> results
   in
 

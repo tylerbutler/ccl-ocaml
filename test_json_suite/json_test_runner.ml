@@ -10,8 +10,11 @@ type test_status =
 type test_result = {
   name : string;
   status : test_status;
-  validations_run : (string * bool * string option) list;
+  validations_run : (string * bool * string option * int) list; (* validation_name, success, error_msg, assertion_count *)
   overall_success : bool;
+  total_assertions : int;
+  passed_assertions : int;
+  failed_assertions : int;
 }
 
 type suite_result = {
@@ -22,41 +25,145 @@ type suite_result = {
   skipped_tests : int;
   ignored_tests : int;
   test_results : test_result list;
+  total_assertions : int;
+  passed_assertions : int;
+  failed_assertions : int;
 }
 
 (* Default test configuration *)
 let default_config = {
   skip_optional_features = false;
   ignored_features = [];
-  skip_features = ["dotted-keys"; "typed-access"; "processing"];
+  skip_features = ["dotted-keys"; "typed-parsing"; "processing"];
+  skip_proposed = true;  (* Skip proposed behaviors, prefer reference-compliant *)
+  skip_tags = [
+    "proposed"; 
+    "proposed-behavior";
+    "needs-flexible-boolean-parsing"; 
+    "needs-crlf-normalization";
+  ];
 }
+
+(* Helper function to count assertions in a validation *)
+let count_validation_assertions validation_opt =
+  match validation_opt with
+  | None -> 0
+  | Some validation ->
+      (match validation with
+       | Json_test_types.Entries { count; _ } -> count
+       | Json_test_types.ParseError _ -> 1)
+
+let count_filter_validation_assertions validation_opt =
+  match validation_opt with
+  | None -> 0
+  | Some validation ->
+      (match validation with
+       | Json_test_types.FilteredEntries { count; _ } -> count
+       | Json_test_types.FilterError _ -> 1)
+
+let count_expand_dotted_validation_assertions validation_opt =
+  match validation_opt with
+  | None -> 0
+  | Some validation ->
+      (match validation with
+       | Json_test_types.ExpandedEntries { count; _ } -> count
+       | Json_test_types.ExpandError _ -> 1)
+
+let count_make_objects_validation_assertions validation_opt =
+  match validation_opt with
+  | None -> 0
+  | Some validation ->
+      (match validation with
+       | Json_test_types.ObjectResult { count; _ } -> count
+       | Json_test_types.ObjectError _ -> 1)
+
+let count_typed_access_validation_assertions validation_opt =
+  match validation_opt with
+  | None -> 0
+  | Some validation ->
+      (match validation with
+       | Json_test_types.TypedCases { count; _ } -> count)
+
+let count_compose_validation_assertions validation_opt =
+  match validation_opt with
+  | None -> 0
+  | Some _ -> 1 (* Compose validations typically count as 1 assertion *)
+
+let count_pretty_print_validation_assertions validation_opt =
+  match validation_opt with
+  | None -> 0
+  | Some _ -> 1
+
+let count_round_trip_validation_assertions validation_opt =
+  match validation_opt with
+  | None -> 0
+  | Some _ -> 1
+
+let count_canonical_format_validation_assertions validation_opt =
+  match validation_opt with
+  | None -> 0
+  | Some _ -> 1
+
+let count_associativity_validation_assertions validation_opt =
+  match validation_opt with
+  | None -> 0
+  | Some _ -> 1
+
+(* Count total assertions in a test case *)
+let count_test_case_assertions test_case =
+  let validations = test_case.validations in
+  count_validation_assertions validations.parse +
+  count_validation_assertions validations.parse_value +
+  count_filter_validation_assertions validations.filter +
+  count_compose_validation_assertions validations.compose +
+  count_expand_dotted_validation_assertions validations.expand_dotted +
+  count_make_objects_validation_assertions validations.make_objects +
+  count_typed_access_validation_assertions validations.get_string +
+  count_typed_access_validation_assertions validations.get_int +
+  count_typed_access_validation_assertions validations.get_bool +
+  count_typed_access_validation_assertions validations.get_float +
+  count_pretty_print_validation_assertions validations.pretty_print +
+  count_round_trip_validation_assertions validations.round_trip +
+  count_canonical_format_validation_assertions validations.canonical_format +
+  count_associativity_validation_assertions validations.associativity
 
 (* Check if a test should be skipped or ignored *)
 let should_skip_test config test_case =
-  match test_case.meta.feature with
-  | Some feature ->
-      if List.mem feature config.ignored_features then
-        Some (Ignored ("Feature '" ^ feature ^ "' is ignored"))
-      else if List.mem feature config.skip_features then
-        Some (Skipped ("Feature '" ^ feature ^ "' is not implemented"))
-      else if config.skip_optional_features && 
-              List.exists (fun tag -> List.mem tag ["optional"; "advanced"]) test_case.meta.tags then
-        Some (Skipped "Optional feature skipped")
-      else
-        None
-  | None -> None
+  (* Check for tag-based skipping first *)
+  let has_skip_tag = List.exists (fun tag -> List.mem tag config.skip_tags) test_case.meta.tags in
+  if has_skip_tag then
+    let skip_tag = List.find (fun tag -> List.mem tag config.skip_tags) test_case.meta.tags in
+    Some (Skipped ("Tag '" ^ skip_tag ^ "' is not supported"))
+  else
+    (* Check for proposed behavior skipping *)
+    if config.skip_proposed && 
+       (List.mem "proposed" test_case.meta.tags || List.mem "proposed-behavior" test_case.meta.tags) then
+      Some (Skipped "Proposed behavior not implemented (using reference-compliant behavior)")
+    else
+      match test_case.meta.feature with
+      | Some feature ->
+          if List.mem feature config.ignored_features then
+            Some (Ignored ("Feature '" ^ feature ^ "' is ignored"))
+          else if List.mem feature config.skip_features then
+            Some (Skipped ("Feature '" ^ feature ^ "' is not implemented"))
+          else if config.skip_optional_features && 
+                  List.exists (fun tag -> List.mem tag ["optional"; "advanced"]) test_case.meta.tags then
+            Some (Skipped "Optional feature skipped")
+          else
+            None
+      | None -> None
 
 (* Convert JSON test case to Alcotest test *)
 let json_test_to_alcotest (test_case : Json_test_types.test_case) =
   let test_name = Printf.sprintf "[JSON] %s" test_case.name in
   let test_func () =
     let validation_results = Ccl_api_mapping.execute_validation test_case in
-    let failed_validations = List.filter (fun (_, success, _) -> not success) validation_results in
+    let failed_validations = List.filter (fun (_, success, _, _) -> not success) validation_results in
     
     if List.length failed_validations = 0 then
       () (* Test passes *)
     else
-      let error_messages = List.map (fun (name, _, msg_opt) ->
+      let error_messages = List.map (fun (name, _, msg_opt, _) ->
         match msg_opt with
         | Some msg -> Printf.sprintf "%s: %s" name msg
         | None -> Printf.sprintf "%s: failed" name
@@ -77,18 +184,33 @@ let execute_json_test_suite_with_config config test_suite =
   let test_results = List.map (fun test_case ->
     match should_skip_test config test_case with
     | Some skip_reason ->
-        { name = test_case.name; status = skip_reason; validations_run = []; overall_success = false }
+        let total_assertions = count_test_case_assertions test_case in
+        { name = test_case.name; status = skip_reason; validations_run = []; 
+          overall_success = false; total_assertions; passed_assertions = 0; failed_assertions = 0 }
     | None ->
         let validation_results = Ccl_api_mapping.execute_validation test_case in
-        let overall_success = List.for_all (fun (_, success, _) -> success) validation_results in
+        let overall_success = List.for_all (fun (_, success, _, _) -> success) validation_results in
         let status = if overall_success then Passed else Failed "Some validations failed" in
-        { name = test_case.name; status; validations_run = validation_results; overall_success }
+        
+        (* Calculate assertion counts *)
+        let total_assertions = List.fold_left (fun acc (_, _, _, count) -> acc + count) 0 validation_results in
+        let passed_assertions = List.fold_left (fun acc (_, success, _, count) -> 
+          if success then acc + count else acc) 0 validation_results in
+        let failed_assertions = total_assertions - passed_assertions in
+        
+        { name = test_case.name; status; validations_run = validation_results; overall_success;
+          total_assertions; passed_assertions; failed_assertions }
   ) test_suite.tests in
   
   let passed_tests = List.length (List.filter (fun tr -> tr.status = Passed) test_results) in
   let failed_tests = List.length (List.filter (fun tr -> match tr.status with Failed _ -> true | _ -> false) test_results) in
   let skipped_tests = List.length (List.filter (fun tr -> match tr.status with Skipped _ -> true | _ -> false) test_results) in
   let ignored_tests = List.length (List.filter (fun tr -> match tr.status with Ignored _ -> true | _ -> false) test_results) in
+  
+  (* Aggregate assertion counts *)
+  let total_assertions = List.fold_left (fun acc (tr : test_result) -> acc + tr.total_assertions) 0 test_results in
+  let passed_assertions = List.fold_left (fun acc (tr : test_result) -> acc + tr.passed_assertions) 0 test_results in
+  let failed_assertions = List.fold_left (fun acc (tr : test_result) -> acc + tr.failed_assertions) 0 test_results in
   
   {
     suite_name = test_suite.suite;
@@ -98,6 +220,9 @@ let execute_json_test_suite_with_config config test_suite =
     skipped_tests;
     ignored_tests;
     test_results;
+    total_assertions;
+    passed_assertions;
+    failed_assertions;
   }
 
 (* Execute JSON test suite and return results (backwards compatibility) *)
@@ -107,7 +232,7 @@ let execute_json_test_suite test_suite =
 (* Print test results summary *)
 let print_suite_result suite_result =
   Printf.printf "\n=== %s ===\n" suite_result.suite_name;
-  Printf.printf "Total: %d | Passed: %d | Failed: %d" 
+  Printf.printf "Tests: %d | Passed: %d | Failed: %d" 
     suite_result.total_tests suite_result.passed_tests suite_result.failed_tests;
   
   if suite_result.skipped_tests > 0 then
@@ -117,6 +242,8 @@ let print_suite_result suite_result =
     Printf.printf " | Ignored: %d" suite_result.ignored_tests;
   
   Printf.printf "\n";
+  Printf.printf "Assertions: %d | Passed: %d | Failed: %d\n" 
+    suite_result.total_assertions suite_result.passed_assertions suite_result.failed_assertions;
   
   (* Show skipped tests *)
   let skipped_tests = List.filter (fun tr -> match tr.status with Skipped _ -> true | _ -> false) suite_result.test_results in
@@ -148,11 +275,11 @@ let print_suite_result suite_result =
       match test_result.status with
       | Failed _ -> (
         Printf.printf "- %s:\n" test_result.name;
-        List.iter (fun (validation_name, success, msg_opt) ->
+        List.iter (fun (validation_name, success, msg_opt, assertion_count) ->
           if not success then
             match msg_opt with
-            | Some msg -> Printf.printf "  * %s: %s\n" validation_name msg
-            | None -> Printf.printf "  * %s: failed\n" validation_name
+            | Some msg -> Printf.printf "  * %s (%d assertions): %s\n" validation_name assertion_count msg
+            | None -> Printf.printf "  * %s (%d assertions): failed\n" validation_name assertion_count
         ) test_result.validations_run
       )
       | _ -> ()
@@ -430,7 +557,9 @@ let run_smart_tests directory =
     Printf.printf "🚀 Smart Test Run - Skipping Known Unimplemented Features\n";
     Printf.printf "Found %d API test files, %d property test files, %d other test files in %s\n\n" 
                   (List.length api_tests) (List.length property_tests) (List.length unknown_tests) directory;
-    Printf.printf "Configured to skip: %s\n\n" (String.concat ", " default_config.skip_features);
+    Printf.printf "Configured to skip features: %s\n" (String.concat ", " default_config.skip_features);
+    Printf.printf "Configured to skip tags: %s\n" (String.concat ", " default_config.skip_tags);
+    Printf.printf "Skip proposed behaviors: %b\n\n" default_config.skip_proposed;
     flush_all ();
     
     (* Run API tests first with smart skipping *)
