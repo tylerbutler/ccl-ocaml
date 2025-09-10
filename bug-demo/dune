@@ -1,0 +1,4 @@
+(executable
+ (public_name demonstrate_bug)
+ (name demonstrate_bug)
+ (libraries ccl))
