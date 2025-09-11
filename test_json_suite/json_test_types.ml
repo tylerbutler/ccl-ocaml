@@ -82,6 +82,7 @@ type validations = {
   get_int : typed_access_validation option;
   get_bool : typed_access_validation option;
   get_float : typed_access_validation option;
+  get_list : typed_access_validation option;
   pretty_print : pretty_print_validation option;
   round_trip : round_trip_validation option;
   canonical_format : canonical_format_validation option;
@@ -101,6 +102,12 @@ type test_config = {
   skip_features : string list;
   skip_proposed : bool;  (* Skip tests with "proposed" or "proposed-behavior" tags *)
   skip_tags : string list;  (* Skip tests with these tags *)
+  skip_tests : string list;  (* Skip tests by exact name *)
+  (* New structured filtering options *)
+  skip_functions : string list;  (* Functions not implemented: e.g., ["filter"; "compose"; "pretty-print"] *)
+  skip_behaviors : string list;  (* Behaviors not supported: e.g., ["strict-spacing"; "tabs-preserve"] *)
+  skip_variants : string list;   (* Variants not supported: e.g., ["proposed-behavior"] *)
+  prefer_behaviors : (string * string) list;  (* Preferred behavior choices: e.g., [("crlf", "normalize-to-lf")] *)
 }
 
 type test_case = {
@@ -249,6 +256,7 @@ let parse_validations json =
     get_int = parse_optional_validation "get_int" parse_typed_access_validation;
     get_bool = parse_optional_validation "get_bool" parse_typed_access_validation;
     get_float = parse_optional_validation "get_float" parse_typed_access_validation;
+    get_list = parse_optional_validation "get_list" parse_typed_access_validation;
     pretty_print = parse_optional_validation "pretty_print" parse_pretty_print_validation;
     round_trip = parse_optional_validation "round_trip" parse_round_trip_validation;
     canonical_format = parse_optional_validation "canonical_format" parse_canonical_format_validation;

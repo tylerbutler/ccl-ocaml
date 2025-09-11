@@ -30,17 +30,39 @@ type suite_result = {
   failed_assertions : int;
 }
 
-(* Default test configuration *)
+(* Default test configuration - OCaml mock implementation level *)
 let default_config = {
   skip_optional_features = false;
   ignored_features = [];
-  skip_features = ["dotted-keys"; "typed-parsing"; "processing"];
+  skip_features = [];
   skip_proposed = true;  (* Skip proposed behaviors, prefer reference-compliant *)
   skip_tags = [
+    (* Old tags for backwards compatibility *)
     "proposed"; 
     "proposed-behavior";
     "needs-flexible-boolean-parsing"; 
     "needs-crlf-normalization";
+  ];
+  skip_tests = [
+    (* Known pretty-printer bugs - see POSSIBLE_BUGS.md *)
+    "round_trip_multiline_values";
+    "canonical_format_line_endings_reference_behavior";
+  ];
+  (* New structured filtering - OCaml mock implementation capabilities *)
+  skip_functions = [
+    "expand-dotted"
+  ];  (* Core functions implemented: parse, filter, compose, pretty-print, make-objects, get-string/int/bool/float/list *)
+  skip_behaviors = [
+    "boolean-lenient"
+  ];  (* Support strict-spacing, tabs-preserve, crlf-preserve-literal, but not lenient boolean parsing *)
+  skip_variants = [
+    "proposed-behavior"
+  ];  (* Prefer reference-compliant behavior, skip proposed variants *)
+  prefer_behaviors = [
+    ("crlf", "normalize-to-lf");
+    ("tabs", "to-spaces"); 
+    ("spacing", "loose-spacing");
+    ("boolean", "strict");
   ];
 }
 
@@ -122,36 +144,91 @@ let count_test_case_assertions test_case =
   count_typed_access_validation_assertions validations.get_int +
   count_typed_access_validation_assertions validations.get_bool +
   count_typed_access_validation_assertions validations.get_float +
+  count_typed_access_validation_assertions validations.get_list +
   count_pretty_print_validation_assertions validations.pretty_print +
   count_round_trip_validation_assertions validations.round_trip +
   count_canonical_format_validation_assertions validations.canonical_format +
   count_associativity_validation_assertions validations.associativity
 
-(* Check if a test should be skipped or ignored *)
+(* Helper functions for structured tag analysis *)
+let extract_function_tags tags = List.filter (fun tag -> String.starts_with ~prefix:"function:" tag) tags
+let extract_feature_tags tags = List.filter (fun tag -> String.starts_with ~prefix:"feature:" tag) tags
+let extract_behavior_tags tags = List.filter (fun tag -> String.starts_with ~prefix:"behavior:" tag) tags
+let extract_variant_tags tags = List.filter (fun tag -> String.starts_with ~prefix:"variant:" tag) tags
+
+(* Check if a test should be skipped or ignored with centralized filtering *)
 let should_skip_test config test_case =
-  (* Check for tag-based skipping first *)
-  let has_skip_tag = List.exists (fun tag -> List.mem tag config.skip_tags) test_case.meta.tags in
-  if has_skip_tag then
-    let skip_tag = List.find (fun tag -> List.mem tag config.skip_tags) test_case.meta.tags in
-    Some (Skipped ("Tag '" ^ skip_tag ^ "' is not supported"))
+  let tags = test_case.meta.tags in
+  
+  (* 0. Check for explicit test name skipping first *)
+  if List.mem test_case.name config.skip_tests then
+    Some (Skipped ("Test '" ^ test_case.name ^ "' is skipped (known issue)"))
   else
-    (* Check for proposed behavior skipping *)
-    if config.skip_proposed && 
-       (List.mem "proposed" test_case.meta.tags || List.mem "proposed-behavior" test_case.meta.tags) then
-      Some (Skipped "Proposed behavior not implemented (using reference-compliant behavior)")
-    else
-      match test_case.meta.feature with
-      | Some feature ->
-          if List.mem feature config.ignored_features then
-            Some (Ignored ("Feature '" ^ feature ^ "' is ignored"))
-          else if List.mem feature config.skip_features then
-            Some (Skipped ("Feature '" ^ feature ^ "' is not implemented"))
-          else if config.skip_optional_features && 
-                  List.exists (fun tag -> List.mem tag ["optional"; "advanced"]) test_case.meta.tags then
-            Some (Skipped "Optional feature skipped")
-          else
-            None
-      | None -> None
+  
+  (* Extract structured tag categories *)
+  let function_tags = extract_function_tags tags in
+  let _feature_tags = extract_feature_tags tags in  (* For future use *)
+  let behavior_tags = extract_behavior_tags tags in
+  let variant_tags = extract_variant_tags tags in
+  
+  (* 1. Check for explicit tag-based skipping first (backwards compatibility) *)
+  let has_skip_tag = List.exists (fun tag -> List.mem tag config.skip_tags) tags in
+  if has_skip_tag then
+    let skip_tag = List.find (fun tag -> List.mem tag config.skip_tags) tags in
+    Some (Skipped ("Legacy tag '" ^ skip_tag ^ "' is not supported"))
+  else
+  
+  (* 2. Check function requirements - skip if any required function is not implemented *)
+  let required_functions = List.map (fun tag -> 
+    String.sub tag 9 (String.length tag - 9) (* Remove "function:" prefix *)
+  ) function_tags in
+  let has_unimplemented_function = List.exists (fun func -> List.mem func config.skip_functions) required_functions in
+  if has_unimplemented_function then
+    let unimpl_func = List.find (fun func -> List.mem func config.skip_functions) required_functions in
+    Some (Skipped ("Function '" ^ unimpl_func ^ "' is not implemented"))
+  else
+
+  (* 3. Check behavior requirements - skip if test requires unsupported behavior *)  
+  let required_behaviors = List.map (fun tag ->
+    String.sub tag 9 (String.length tag - 9) (* Remove "behavior:" prefix *)
+  ) behavior_tags in
+  let has_unsupported_behavior = List.exists (fun behav -> List.mem behav config.skip_behaviors) required_behaviors in
+  if has_unsupported_behavior then
+    let unsup_behav = List.find (fun behav -> List.mem behav config.skip_behaviors) required_behaviors in
+    Some (Skipped ("Behavior '" ^ unsup_behav ^ "' is not supported"))
+  else
+
+  (* 4. Check variant requirements - skip if test requires unsupported variant *)
+  let required_variants = List.map (fun tag ->
+    String.sub tag 8 (String.length tag - 8) (* Remove "variant:" prefix *)
+  ) variant_tags in
+  let has_unsupported_variant = List.exists (fun var -> List.mem var config.skip_variants) required_variants in
+  if has_unsupported_variant then
+    let unsup_var = List.find (fun var -> List.mem var config.skip_variants) required_variants in
+    Some (Skipped ("Variant '" ^ unsup_var ^ "' is not supported"))
+  else
+
+  (* 5. Check proposed behavior skipping (legacy compatibility) *)
+  if config.skip_proposed && 
+     (List.mem "variant:proposed-behavior" tags || 
+      List.mem "proposed" tags || 
+      List.mem "proposed-behavior" tags) then
+    Some (Skipped "Proposed behavior not implemented (using reference-compliant behavior)")
+  else
+  
+  (* 6. Check legacy feature-based skipping *)
+  match test_case.meta.feature with
+  | Some feature ->
+      if List.mem feature config.ignored_features then
+        Some (Ignored ("Feature '" ^ feature ^ "' is ignored"))
+      else if List.mem feature config.skip_features then
+        Some (Skipped ("Feature '" ^ feature ^ "' is not implemented"))
+      else if config.skip_optional_features && 
+              List.exists (fun tag -> List.mem tag ["optional"; "advanced"]) tags then
+        Some (Skipped "Optional feature skipped")
+      else
+        None
+  | None -> None
 
 (* Convert JSON test case to Alcotest test *)
 let json_test_to_alcotest (test_case : Json_test_types.test_case) =

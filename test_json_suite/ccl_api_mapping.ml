@@ -201,6 +201,19 @@ let get_float_from_path json_obj path =
   in
   access_path json_obj path
 
+let get_list_from_path json_obj path =
+  let rec access_path obj path =
+    match path, obj with
+    | [], `List l -> Ok l
+    | [], _ -> Error "Value is not a list"
+    | key :: rest, `Assoc assoc ->
+        (match List.assoc_opt key assoc with
+         | Some value -> access_path value rest
+         | None -> Error ("Key not found: " ^ key))
+    | _, _ -> Error "Invalid path for object structure"
+  in
+  access_path json_obj path
+
 (* Execute Level 4: Typed access validation *)
 let execute_typed_access_case json_obj case_val access_type =
   match case_val with
@@ -238,6 +251,14 @@ let execute_typed_access_case json_obj case_val access_type =
                 else Error (Printf.sprintf "Float access mismatch: expected %s, got %f" 
                              (Yojson.Safe.to_string expected) actual_value)
             | Error err -> Error err)
+       | "get_list" ->
+           (match get_list_from_path json_obj args with
+            | Ok actual_list ->
+                if Yojson.Safe.equal (`List actual_list) expected
+                then Ok ()
+                else Error (Printf.sprintf "List access mismatch: expected %s, got %s" 
+                             (Yojson.Safe.to_string expected) (Yojson.Safe.to_string (`List actual_list)))
+            | Error err -> Error err)
        | _ -> Error ("Unknown access type: " ^ access_type))
   | TypedErrorCase { args; error = _error } ->
       (match access_type with
@@ -256,6 +277,10 @@ let execute_typed_access_case json_obj case_val access_type =
        | "get_float" ->
            (match get_float_from_path json_obj args with
             | Ok _ -> Error "Expected error but float access succeeded"
+            | Error _ -> Ok ())
+       | "get_list" ->
+           (match get_list_from_path json_obj args with
+            | Ok _ -> Error "Expected error but list access succeeded"
             | Error _ -> Ok ())
        | _ -> Error ("Unknown access type: " ^ access_type))
 
@@ -356,7 +381,7 @@ let get_assertion_count validation_name validations =
        | Some (Json_test_types.ObjectResult { count; _ }) -> count
        | Some (Json_test_types.ObjectError _) -> 1
        | None -> 0)
-  | "get_string" | "get_int" | "get_bool" | "get_float" ->
+  | "get_string" | "get_int" | "get_bool" | "get_float" | "get_list" ->
       (match validation_name with
        | "get_string" ->
            (match validations.Json_test_types.get_string with
@@ -372,6 +397,10 @@ let get_assertion_count validation_name validations =
             | None -> 0)
        | "get_float" ->
            (match validations.Json_test_types.get_float with
+            | Some (Json_test_types.TypedCases { count; _ }) -> count
+            | None -> 0)
+       | "get_list" ->
+           (match validations.Json_test_types.get_list with
             | Some (Json_test_types.TypedCases { count; _ }) -> count
             | None -> 0)
        | _ -> 0)
@@ -505,6 +534,16 @@ let execute_validation test_case =
         execute_with_count "get_float" validations (execute_typed_access_validation json_obj float_validation "get_float") :: results
     | None, Some _ -> 
         execute_with_count "get_float" validations (Error "No JSON object for get_float validation") :: results
+    | _, None -> results
+  in
+
+  (* Execute get_list validation if present *)
+  let results =
+    match json_obj_opt, validations.get_list with
+    | Some json_obj, Some list_validation ->
+        execute_with_count "get_list" validations (execute_typed_access_validation json_obj list_validation "get_list") :: results
+    | None, Some _ -> 
+        execute_with_count "get_list" validations (Error "No JSON object for get_list validation") :: results
     | _, None -> results
   in
 
