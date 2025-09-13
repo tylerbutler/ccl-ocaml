@@ -1,10 +1,17 @@
 open Json_test_types
 
 (* Test result tracking *)
+type skip_category = 
+  | KnownIssue
+  | UnimplementedFunction of string
+  | UnsupportedBehavior of string  
+  | UnsupportedVariant of string
+  | LegacyTag of string
+
 type test_status = 
   | Passed
   | Failed of string
-  | Skipped of string
+  | Skipped of skip_category * string
   | Ignored of string
 
 type test_result = {
@@ -162,7 +169,7 @@ let should_skip_test config test_case =
   
   (* 0. Check for explicit test name skipping first *)
   if List.mem test_case.name config.skip_tests then
-    Some (Skipped ("Test '" ^ test_case.name ^ "' is skipped (known issue)"))
+    Some (Skipped (KnownIssue, "Test '" ^ test_case.name ^ "' is skipped (known issue)"))
   else
   
   (* Extract structured tag categories *)
@@ -175,7 +182,7 @@ let should_skip_test config test_case =
   let has_skip_tag = List.exists (fun tag -> List.mem tag config.skip_tags) tags in
   if has_skip_tag then
     let skip_tag = List.find (fun tag -> List.mem tag config.skip_tags) tags in
-    Some (Skipped ("Legacy tag '" ^ skip_tag ^ "' is not supported"))
+    Some (Skipped (LegacyTag skip_tag, "Legacy tag '" ^ skip_tag ^ "' is not supported"))
   else
   
   (* 2. Check function requirements - skip if any required function is not implemented *)
@@ -185,7 +192,7 @@ let should_skip_test config test_case =
   let has_unimplemented_function = List.exists (fun func -> List.mem func config.skip_functions) required_functions in
   if has_unimplemented_function then
     let unimpl_func = List.find (fun func -> List.mem func config.skip_functions) required_functions in
-    Some (Skipped ("Function '" ^ unimpl_func ^ "' is not implemented"))
+    Some (Skipped (UnimplementedFunction unimpl_func, "Function '" ^ unimpl_func ^ "' is not implemented"))
   else
 
   (* 3. Check behavior requirements - skip if test requires unsupported behavior *)  
@@ -195,7 +202,7 @@ let should_skip_test config test_case =
   let has_unsupported_behavior = List.exists (fun behav -> List.mem behav config.skip_behaviors) required_behaviors in
   if has_unsupported_behavior then
     let unsup_behav = List.find (fun behav -> List.mem behav config.skip_behaviors) required_behaviors in
-    Some (Skipped ("Behavior '" ^ unsup_behav ^ "' is not supported"))
+    Some (Skipped (UnsupportedBehavior unsup_behav, "Behavior '" ^ unsup_behav ^ "' is not supported"))
   else
 
   (* 4. Check variant requirements - skip if test requires unsupported variant *)
@@ -205,7 +212,7 @@ let should_skip_test config test_case =
   let has_unsupported_variant = List.exists (fun var -> List.mem var config.skip_variants) required_variants in
   if has_unsupported_variant then
     let unsup_var = List.find (fun var -> List.mem var config.skip_variants) required_variants in
-    Some (Skipped ("Variant '" ^ unsup_var ^ "' is not supported"))
+    Some (Skipped (UnsupportedVariant unsup_var, "Variant '" ^ unsup_var ^ "' is not supported"))
   else
 
   (* 5. Check proposed behavior skipping (legacy compatibility) *)
@@ -213,7 +220,7 @@ let should_skip_test config test_case =
      (List.mem "variant:proposed-behavior" tags || 
       List.mem "proposed" tags || 
       List.mem "proposed-behavior" tags) then
-    Some (Skipped "Proposed behavior not implemented (using reference-compliant behavior)")
+    Some (Skipped (UnsupportedVariant "proposed-behavior", "Proposed behavior not implemented (using reference-compliant behavior)"))
   else
   
   (* 6. Check legacy feature-based skipping *)
@@ -222,10 +229,10 @@ let should_skip_test config test_case =
       if List.mem feature config.ignored_features then
         Some (Ignored ("Feature '" ^ feature ^ "' is ignored"))
       else if List.mem feature config.skip_features then
-        Some (Skipped ("Feature '" ^ feature ^ "' is not implemented"))
+        Some (Skipped (UnimplementedFunction feature, "Feature '" ^ feature ^ "' is not implemented"))
       else if config.skip_optional_features && 
               List.exists (fun tag -> List.mem tag ["optional"; "advanced"]) tags then
-        Some (Skipped "Optional feature skipped")
+        Some (Skipped (UnsupportedBehavior "optional", "Optional feature skipped"))
       else
         None
   | None -> None
@@ -281,7 +288,7 @@ let execute_json_test_suite_with_config config test_suite =
   
   let passed_tests = List.length (List.filter (fun tr -> tr.status = Passed) test_results) in
   let failed_tests = List.length (List.filter (fun tr -> match tr.status with Failed _ -> true | _ -> false) test_results) in
-  let skipped_tests = List.length (List.filter (fun tr -> match tr.status with Skipped _ -> true | _ -> false) test_results) in
+  let skipped_tests = List.length (List.filter (fun tr -> match tr.status with Skipped (_, _) -> true | _ -> false) test_results) in
   let ignored_tests = List.length (List.filter (fun tr -> match tr.status with Ignored _ -> true | _ -> false) test_results) in
   
   (* Aggregate assertion counts *)
@@ -322,15 +329,112 @@ let print_suite_result suite_result =
   Printf.printf "Assertions: %d | Passed: %d | Failed: %d\n" 
     suite_result.total_assertions suite_result.passed_assertions suite_result.failed_assertions;
   
-  (* Show skipped tests *)
-  let skipped_tests = List.filter (fun tr -> match tr.status with Skipped _ -> true | _ -> false) suite_result.test_results in
+  (* Show skipped tests grouped by category *)
+  let skipped_tests = List.filter (fun tr -> match tr.status with Skipped (_, _) -> true | _ -> false) suite_result.test_results in
   if List.length skipped_tests > 0 then (
-    Printf.printf "\nSkipped tests:\n";
-    List.iter (fun test_result ->
-      match test_result.status with
-      | Skipped reason -> Printf.printf "- %s: %s\n" test_result.name reason
-      | _ -> ()
-    ) skipped_tests
+    let show_grouped_skipped_tests skipped_tests =
+      (* ANSI color codes *)
+      let bold = "\027[1m" in
+      let reset = "\027[0m" in
+      let yellow = "\027[33m" in
+      let cyan = "\027[36m" in
+      let blue = "\027[34m" in
+      let magenta = "\027[35m" in
+      let red = "\027[31m" in
+      
+      (* Group tests by skip category *)
+      let known_issue_tests = ref [] in
+      let unimpl_func_tests = ref [] in  
+      let unsup_behavior_tests = ref [] in
+      let unsup_variant_tests = ref [] in
+      let legacy_tag_tests = ref [] in
+      
+      List.iter (fun test_result ->
+        match test_result.status with
+        | Skipped (KnownIssue, reason) -> 
+            known_issue_tests := (test_result.name, reason) :: !known_issue_tests
+        | Skipped (UnimplementedFunction func, reason) ->
+            unimpl_func_tests := (test_result.name, reason, func) :: !unimpl_func_tests
+        | Skipped (UnsupportedBehavior behavior, reason) ->
+            unsup_behavior_tests := (test_result.name, reason, behavior) :: !unsup_behavior_tests  
+        | Skipped (UnsupportedVariant variant, reason) ->
+            unsup_variant_tests := (test_result.name, reason, variant) :: !unsup_variant_tests
+        | Skipped (LegacyTag tag, reason) ->
+            legacy_tag_tests := (test_result.name, reason, tag) :: !legacy_tag_tests
+        | _ -> ()
+      ) skipped_tests;
+      
+      Printf.printf "\n%s🚫 SKIPPED TESTS SUMMARY%s\n" bold reset;
+      
+      (* Known Issues *)
+      if !known_issue_tests <> [] then (
+        Printf.printf "\n%s%s🐛 Known Issues (bugs in implementation)%s\n" bold red reset;
+        List.iter (fun (name, reason) ->
+          Printf.printf "   %s• %s%s - %s\n" red name reset reason
+        ) (List.rev !known_issue_tests)
+      );
+      
+      (* Unimplemented Functions *)
+      if !unimpl_func_tests <> [] then (
+        Printf.printf "\n%s%s⚙️  Unimplemented Functions%s\n" bold yellow reset;
+        let func_groups = List.fold_left (fun acc (name, reason, func) ->
+          let existing = try List.assoc func acc with Not_found -> [] in
+          (func, (name, reason) :: existing) :: (List.remove_assoc func acc)
+        ) [] !unimpl_func_tests in
+        List.iter (fun (func, tests) ->
+          Printf.printf "   %s%sFunction: %s%s (%d tests)\n" bold yellow func reset (List.length tests);
+          List.iter (fun (name, _reason) ->
+            Printf.printf "     %s• %s%s\n" yellow name reset
+          ) (List.rev tests)
+        ) func_groups
+      );
+      
+      (* Unsupported Behaviors *)
+      if !unsup_behavior_tests <> [] then (
+        Printf.printf "\n%s%s🔧 Unsupported Behaviors%s\n" bold cyan reset;
+        let behavior_groups = List.fold_left (fun acc (name, reason, behavior) ->
+          let existing = try List.assoc behavior acc with Not_found -> [] in
+          (behavior, (name, reason) :: existing) :: (List.remove_assoc behavior acc)
+        ) [] !unsup_behavior_tests in
+        List.iter (fun (behavior, tests) ->
+          Printf.printf "   %s%sBehavior: %s%s (%d tests)\n" bold cyan behavior reset (List.length tests);
+          List.iter (fun (name, _reason) ->
+            Printf.printf "     %s• %s%s\n" cyan name reset
+          ) (List.rev tests)
+        ) behavior_groups
+      );
+      
+      (* Unsupported Variants *)
+      if !unsup_variant_tests <> [] then (
+        Printf.printf "\n%s%s🔀 Unsupported Variants%s\n" bold blue reset;
+        let variant_groups = List.fold_left (fun acc (name, reason, variant) ->
+          let existing = try List.assoc variant acc with Not_found -> [] in
+          (variant, (name, reason) :: existing) :: (List.remove_assoc variant acc)
+        ) [] !unsup_variant_tests in
+        List.iter (fun (variant, tests) ->
+          Printf.printf "   %s%sVariant: %s%s (%d tests)\n" bold blue variant reset (List.length tests);
+          List.iter (fun (name, _reason) ->
+            Printf.printf "     %s• %s%s\n" blue name reset
+          ) (List.rev tests)
+        ) variant_groups
+      );
+      
+      (* Legacy Tags *)
+      if !legacy_tag_tests <> [] then (
+        Printf.printf "\n%s%s📜 Legacy Tags (deprecated)%s\n" bold magenta reset;
+        let tag_groups = List.fold_left (fun acc (name, reason, tag) ->
+          let existing = try List.assoc tag acc with Not_found -> [] in
+          (tag, (name, reason) :: existing) :: (List.remove_assoc tag acc)
+        ) [] !legacy_tag_tests in
+        List.iter (fun (tag, tests) ->
+          Printf.printf "   %s%sTag: %s%s (%d tests)\n" bold magenta tag reset (List.length tests);
+          List.iter (fun (name, _reason) ->
+            Printf.printf "     %s• %s%s\n" magenta name reset
+          ) (List.rev tests)
+        ) tag_groups
+      )
+    in
+    show_grouped_skipped_tests skipped_tests
   );
   
   (* Show ignored tests *)
@@ -740,6 +844,177 @@ let run_smart_tests directory =
     Printf.eprintf "Error reading directory %s: %s\n" directory msg;
     exit 1
 
+(* Proposed test analysis functionality *)
+type proposed_test_result = {
+  test_name : string;
+  has_proposed_tag : bool;
+  has_reference_tag : bool;
+  tags : string list;
+  passed_normally : bool;
+  error_message : string option;
+}
+
+(* Check if a test case has proposed behavior tags *)
+let has_proposed_tags test_case =
+  let tags = test_case.meta.tags in
+  List.exists (fun tag -> 
+    tag = "proposed" || 
+    tag = "proposed-behavior" || 
+    tag = "variant:proposed-behavior"
+  ) tags
+
+(* Check if a test case has reference-compliant tags *)
+let has_reference_tags test_case =
+  let tags = test_case.meta.tags in
+  List.exists (fun tag -> 
+    tag = "reference-compliant" || 
+    tag = "variant:reference-compliant"
+  ) tags
+
+(* Run a single test case and return detailed results *)
+let analyze_single_proposed_test test_case =
+  let proposed_tag = has_proposed_tags test_case in
+  let reference_tag = has_reference_tags test_case in
+  
+  (* Test the case normally *)
+  let (passed, error_msg) = 
+    try
+      let validation_results = Ccl_api_mapping.execute_validation test_case in
+      let overall_success = List.for_all (fun (_, success, _, _) -> success) validation_results in
+      let error_msg = 
+        if not overall_success then
+          let failed_validations = List.filter (fun (_, success, _, _) -> not success) validation_results in
+          let error_messages = List.map (fun (name, _, msg_opt, _) ->
+            match msg_opt with
+            | Some msg -> Printf.sprintf "%s: %s" name msg
+            | None -> Printf.sprintf "%s: failed" name
+          ) failed_validations in
+          Some (String.concat "; " error_messages)
+        else None
+      in
+      (overall_success, error_msg)
+    with
+    | exn -> (false, Some (Printexc.to_string exn))
+  in
+  
+  {
+    test_name = test_case.name;
+    has_proposed_tag = proposed_tag;
+    has_reference_tag = reference_tag;
+    tags = test_case.meta.tags;
+    passed_normally = passed;
+    error_message = error_msg;
+  }
+
+(* Analyze all tests in a suite and categorize results *)
+let analyze_proposed_in_suite test_suite =
+  Printf.printf "=== Analyzing Proposed Tests in %s ===\n" test_suite.suite;
+  
+  let results = List.map analyze_single_proposed_test test_suite.tests in
+  
+  (* Categorize results *)
+  let proposed_tests = List.filter (fun r -> r.has_proposed_tag) results in
+  let reference_tests = List.filter (fun r -> r.has_reference_tag) results in
+  let untagged_tests = List.filter (fun r -> not r.has_proposed_tag && not r.has_reference_tag) results in
+  
+  let proposed_passing = List.filter (fun r -> r.has_proposed_tag && r.passed_normally) results in
+  let proposed_failing = List.filter (fun r -> r.has_proposed_tag && not r.passed_normally) results in
+  
+  Printf.printf "\n📊 Test Categorization:\n";
+  Printf.printf "- Tests with proposed tags: %d\n" (List.length proposed_tests);
+  Printf.printf "- Tests with reference tags: %d\n" (List.length reference_tests);
+  Printf.printf "- Tests with no variant tags: %d\n" (List.length untagged_tests);
+  Printf.printf "- Total tests: %d\n" (List.length results);
+  
+  Printf.printf "\n🎯 Proposed Test Results:\n";
+  Printf.printf "- Proposed tests PASSING: %d\n" (List.length proposed_passing);
+  Printf.printf "- Proposed tests FAILING: %d\n" (List.length proposed_failing);
+  
+  if List.length proposed_passing > 0 then (
+    Printf.printf "\n✅ PASSING Proposed Tests (candidates for recategorization):\n";
+    List.iter (fun r ->
+      Printf.printf "- %s\n" r.test_name;
+      Printf.printf "  Tags: %s\n" (String.concat ", " r.tags);
+    ) proposed_passing
+  );
+  
+  if List.length proposed_failing > 0 then (
+    Printf.printf "\n❌ FAILING Proposed Tests:\n";
+    List.iter (fun r ->
+      Printf.printf "- %s\n" r.test_name;
+      Printf.printf "  Tags: %s\n" (String.concat ", " r.tags);
+      (match r.error_message with
+       | Some msg -> Printf.printf "  Error: %s\n" msg
+       | None -> ())
+    ) proposed_failing
+  );
+  
+  (proposed_passing, proposed_failing)
+
+(* Run analysis on all test files *)
+let analyze_all_proposed_tests directory =
+  try
+    let files = Sys.readdir directory in
+    let json_files = Array.to_list files 
+                   |> List.filter is_json_file
+                   |> List.map (Filename.concat directory)
+                   |> List.sort String.compare in
+    
+    if List.length json_files = 0 then (
+      Printf.eprintf "No JSON test files found in directory: %s\n" directory;
+      exit 1
+    );
+    
+    Printf.printf "🔍 PROPOSED TEST ANALYSIS\n";
+    Printf.printf "Analyzing %d test files for proposed tests that might actually pass...\n\n" (List.length json_files);
+    
+    let all_passing_proposed = ref [] in
+    let all_failing_proposed = ref [] in
+    
+    List.iter (fun file ->
+      Printf.printf "\n" ;
+      try
+        let test_suite = load_test_suite_from_file file in
+        let (passing, failing) = analyze_proposed_in_suite test_suite in
+        all_passing_proposed := passing @ !all_passing_proposed;
+        all_failing_proposed := failing @ !all_failing_proposed;
+      with
+      | exn -> 
+        Printf.eprintf "Error analyzing %s: %s\n" file (Printexc.to_string exn);
+    ) json_files;
+    
+    Printf.printf "\n" ;
+    Printf.printf "=== 🎉 OVERALL PROPOSED TEST SUMMARY ===\n";
+    Printf.printf "Total proposed tests found: %d\n" (List.length !all_passing_proposed + List.length !all_failing_proposed);
+    Printf.printf "Proposed tests PASSING: %d\n" (List.length !all_passing_proposed);
+    Printf.printf "Proposed tests FAILING: %d\n" (List.length !all_failing_proposed);
+    
+    if List.length !all_passing_proposed > 0 then (
+      let success_rate = (float_of_int (List.length !all_passing_proposed)) /. 
+                        (float_of_int (List.length !all_passing_proposed + List.length !all_failing_proposed)) *. 100.0 in
+      Printf.printf "Success rate: %.1f%%\n" success_rate;
+      
+      Printf.printf "\n🏆 ALL PASSING PROPOSED TESTS (ready for recategorization):\n";
+      List.iter (fun r ->
+        Printf.printf "- %s\n" r.test_name;
+      ) (List.rev !all_passing_proposed);
+      
+      Printf.printf "\n📋 Recategorization Suggestions:\n";
+      Printf.printf "The following tests could potentially be changed from 'variant:proposed-behavior' to 'variant:reference-compliant':\n\n";
+      List.iter (fun r ->
+        Printf.printf "# %s\n" r.test_name;
+      ) (List.rev !all_passing_proposed);
+    ) else (
+      Printf.printf "\nNo proposed tests are currently passing. All proposed behaviors remain unimplemented.\n";
+    );
+    
+    if List.length !all_passing_proposed > 0 then exit 0 else exit 1
+    
+  with
+  | Sys_error msg ->
+    Printf.eprintf "Error reading directory %s: %s\n" directory msg;
+    exit 1
+
 (* Main CLI function - to be called from test_json_suite.ml *)
 let main () =
   match Sys.argv with
@@ -753,6 +1028,8 @@ let main () =
       run_categorized_tests directory
   | [| _; "run-smart"; directory |] ->
       run_smart_tests directory
+  | [| _; "analyze-proposed"; directory |] ->
+      analyze_all_proposed_tests directory
   | _ ->
       Printf.eprintf "Usage:\n";
       Printf.eprintf "  %s generate <json_file> <output_file>\n" Sys.argv.(0);
@@ -760,4 +1037,5 @@ let main () =
       Printf.eprintf "  %s run-all <directory>\n" Sys.argv.(0);
       Printf.eprintf "  %s run-categorized <directory>  # Run with API/property test classification\n" Sys.argv.(0);
       Printf.eprintf "  %s run-smart <directory>        # Run with intelligent skipping of unimplemented features\n" Sys.argv.(0);
+      Printf.eprintf "  %s analyze-proposed <directory> # Analyze proposed tests to identify ones that actually pass\n" Sys.argv.(0);
       exit 1
