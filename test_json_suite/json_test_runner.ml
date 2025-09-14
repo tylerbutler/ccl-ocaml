@@ -730,13 +730,39 @@ let run_categorized_tests directory =
     Printf.eprintf "Error reading directory %s: %s\n" directory msg;
     exit 1
 
-(* Display capability status with color coding *)
-let display_capability_status config (all_functions, all_features, all_behaviors, all_variants) =
+(* Analyze behavior-variant dependencies from test suites *)
+let analyze_behavior_variant_dependencies test_suites =
+  let behavior_variants = ref [] in
+  
+  List.iter (fun test_suite ->
+    List.iter (fun test_case ->
+      let behavior_tags = extract_behavior_tags test_case.meta.tags in
+      let variant_tags = extract_variant_tags test_case.meta.tags in
+      
+      List.iter (fun behavior_tag ->
+        let behavior = String.sub behavior_tag 9 (String.length behavior_tag - 9) |> normalize_tag_name in
+        List.iter (fun variant_tag ->
+          let variant = String.sub variant_tag 8 (String.length variant_tag - 8) |> normalize_tag_name in
+          let key = (behavior, variant) in
+          if not (List.mem key !behavior_variants) then
+            behavior_variants := key :: !behavior_variants
+        ) variant_tags
+      ) behavior_tags
+    ) test_suite.tests
+  ) test_suites;
+  
+  !behavior_variants
+
+(* Display capability status with color coding and variant dependency analysis *)
+let display_capability_status_with_dependencies config (all_functions, all_features, all_behaviors, all_variants) test_suites =
   let bold = "\027[1m" in
   let reset = "\027[0m" in
   let green = "\027[32m" in
   let red = "\027[31m" in
   let dim = "\027[2m" in
+  
+  (* Analyze behavior-variant dependencies *)
+  let behavior_variant_deps = analyze_behavior_variant_dependencies test_suites in
   
   let format_capability_list all_items skip_items =
     List.map (fun item ->
@@ -747,16 +773,42 @@ let display_capability_status config (all_functions, all_features, all_behaviors
     ) all_items
   in
   
+  (* Enhanced behavior formatting that considers variant dependencies *)
+  let yellow = "\027[33m" in
+  let format_behavior_list all_behaviors skip_behaviors skip_variants =
+    List.map (fun behavior ->
+      if List.mem behavior skip_behaviors then
+        (* Explicitly disabled behavior - red *)
+        Printf.sprintf "%s%s%s%s" red dim behavior reset
+      else
+        (* Check if behavior only exists in disabled variants *)
+        let behavior_variants = List.filter (fun (b, _) -> b = behavior) behavior_variant_deps in
+        let available_variants = List.map snd behavior_variants in
+        let enabled_variants = List.filter (fun v -> not (List.mem v skip_variants)) available_variants in
+        
+        if available_variants <> [] && enabled_variants = [] then
+          (* Behavior has variants but they are ALL disabled - yellow (variant-dependent) *)
+          Printf.sprintf "%s%s%s%s" yellow dim behavior reset
+        else
+          (* Behavior has at least one enabled variant OR has no variants (always available) *)
+          Printf.sprintf "%s%s%s%s" bold green behavior reset
+    ) all_behaviors
+  in
+  
   Printf.printf "%s🎯 CCL IMPLEMENTATION STATUS%s\n" bold reset;
   Printf.printf "\n%s📚 Functions:%s %s\n" bold reset 
     (String.concat " " (format_capability_list all_functions config.skip_functions));
   Printf.printf "%s🎨 Features:%s %s\n" bold reset 
     (String.concat " " (format_capability_list all_features config.skip_features));
   Printf.printf "%s⚙️  Behaviors:%s %s\n" bold reset 
-    (String.concat " " (format_capability_list all_behaviors config.skip_behaviors));
+    (String.concat " " (format_behavior_list all_behaviors config.skip_behaviors config.skip_variants));
   Printf.printf "%s🔀 Variants:%s %s\n" bold reset 
     (String.concat " " (format_capability_list all_variants config.skip_variants));
-  Printf.printf "\n%s%s✅ Enabled%s | %s%s❌ Disabled%s\n\n" bold green reset red dim reset
+  Printf.printf "\n%s%s✅ Enabled%s | %s%s❌ Explicitly Disabled%s | %s%s⚠️ Variant-Dependent%s\n\n" bold green reset red dim reset yellow dim reset
+
+(* Display capability status with color coding - backwards compatibility wrapper *)
+let display_capability_status config capabilities =
+  display_capability_status_with_dependencies config capabilities []
 
 (* Display configuration settings *)
 let display_configuration config =
@@ -817,8 +869,7 @@ let run_smart_tests directory =
     Printf.printf "Found %d API test files, %d property test files, %d other test files in %s\n\n" 
                   (List.length api_tests) (List.length property_tests) (List.length unknown_tests) directory;
     
-    display_configuration default_config;
-    display_capability_status default_config capabilities;
+    display_capability_status_with_dependencies default_config capabilities all_test_suites;
     flush_all ();
     
     (* Run API tests first with smart skipping *)
@@ -942,7 +993,7 @@ let run_smart_tests directory =
     );
     
     Printf.printf "\n";
-    display_configuration default_config;
+    display_capability_status_with_dependencies default_config capabilities all_test_suites;
     
     exit (if suite_failed = 0 then 0 else 1)
     
