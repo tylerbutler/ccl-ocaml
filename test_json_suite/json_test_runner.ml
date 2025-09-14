@@ -1,5 +1,51 @@
 open Json_test_types
 
+(* Convert hyphens to underscores for consistency with config *)
+let normalize_tag_name tag_name =
+  String.map (function '-' -> '_' | c -> c) tag_name
+
+(* Helper for string prefix checking *)
+let starts_with_prefix prefix s = 
+  String.length s >= String.length prefix &&
+  String.sub s 0 (String.length prefix) = prefix
+
+(* Extract available capabilities from JSON test files *)
+let extract_capabilities_from_tests test_suites =
+  let all_functions = ref [] in
+  let all_features = ref [] in
+  let all_behaviors = ref [] in
+  let all_variants = ref [] in
+  
+  List.iter (fun test_suite ->
+    List.iter (fun test_case ->
+      List.iter (fun tag ->
+        if starts_with_prefix "function:" tag then (
+          let func = String.sub tag 9 (String.length tag - 9) |> normalize_tag_name in
+          if not (List.mem func !all_functions) then
+            all_functions := func :: !all_functions
+        ) else if starts_with_prefix "feature:" tag then (
+          let feature = String.sub tag 8 (String.length tag - 8) |> normalize_tag_name in
+          if not (List.mem feature !all_features) then
+            all_features := feature :: !all_features
+        ) else if starts_with_prefix "behavior:" tag then (
+          let behavior = String.sub tag 9 (String.length tag - 9) |> normalize_tag_name in
+          if not (List.mem behavior !all_behaviors) then
+            all_behaviors := behavior :: !all_behaviors
+        ) else if starts_with_prefix "variant:" tag then (
+          let variant = String.sub tag 8 (String.length tag - 8) |> normalize_tag_name in
+          if not (List.mem variant !all_variants) then
+            all_variants := variant :: !all_variants
+        )
+      ) test_case.meta.tags
+    ) test_suite.tests
+  ) test_suites;
+  
+  let result = (List.sort String.compare !all_functions,
+                List.sort String.compare !all_features,
+                List.sort String.compare !all_behaviors,
+                List.sort String.compare !all_variants) in
+  result
+
 (* Test result tracking *)
 type skip_category = 
   | KnownIssue
@@ -37,43 +83,28 @@ type suite_result = {
   failed_assertions : int;
 }
 
-(* Default test configuration - OCaml mock implementation level *)
+(* Test configuration - OCaml mock implementation capabilities *)
 let default_config = {
-  skip_optional_features = false;
-  ignored_features = [];
-  skip_features = [];
-  skip_proposed = true;  (* Skip proposed behaviors, prefer reference-compliant *)
-  skip_tags = [
-    (* Old tags for backwards compatibility *)
-    "proposed"; 
-    "proposed-behavior";
-    "needs-flexible-boolean-parsing"; 
-    "needs-crlf-normalization";
-  ];
   skip_tests = [
-    (* Known pretty-printer bugs - see POSSIBLE_BUGS.md *)
+    (* Known bugs in implementation *)
     "round_trip_multiline_values";
     "canonical_format_line_endings_reference_behavior";
   ];
-  (* New structured filtering - OCaml mock implementation capabilities *)
   skip_functions = [
-    "expand-dotted"
-  ];  (* Core functions implemented: parse, filter, compose, pretty-print, make-objects, get-string/int/bool/float/list *)
+    "expand_dotted"  (* Function not implemented yet *)
+  ];  (* Implemented: parse, filter, compose, pretty_print, make_objects, get_string/int/bool/float/list *)
+  skip_features = [
+    (* Optional language features not implemented *)
+  ];
   skip_behaviors = [
-    "boolean-lenient"
-  ];  (* Support strict-spacing, tabs-preserve, crlf-preserve-literal, but not lenient boolean parsing *)
+    "boolean_lenient"  (* Use strict boolean parsing only *)
+  ];  (* Supported: strict_spacing, tabs_preserve, crlf_preserve_literal *)
   skip_variants = [
-    "proposed-behavior"
-  ];  (* Prefer reference-compliant behavior, skip proposed variants *)
-  prefer_behaviors = [
-    ("crlf", "normalize-to-lf");
-    ("tabs", "to-spaces"); 
-    ("spacing", "loose-spacing");
-    ("boolean", "strict");
+    "proposed_behavior"  (* Use reference_compliant behavior only *)
   ];
 }
 
-(* Helper function to count assertions in a validation *)
+(* Helper function to count assertions in a validation - respects JSON count fields *)
 let count_validation_assertions validation_opt =
   match validation_opt with
   | None -> 0
@@ -113,30 +144,37 @@ let count_typed_access_validation_assertions validation_opt =
       (match validation with
        | Json_test_types.TypedCases { count; _ } -> count)
 
+(* Fixed: All validation counting now respects actual type definitions *)
 let count_compose_validation_assertions validation_opt =
   match validation_opt with
   | None -> 0
-  | Some _ -> 1 (* Compose validations typically count as 1 assertion *)
+  | Some validation ->
+      (match validation with
+       | Json_test_types.CompositionResult _ -> 1  (* Single composition test *)
+       | Json_test_types.ComposeError _ -> 1)
 
 let count_pretty_print_validation_assertions validation_opt =
   match validation_opt with
   | None -> 0
-  | Some _ -> 1
+  | Some validation ->
+      (match validation with
+       | Json_test_types.PrettyResult _ -> 1  (* Single pretty print test *)
+       | Json_test_types.PrettyError _ -> 1)
 
 let count_round_trip_validation_assertions validation_opt =
   match validation_opt with
   | None -> 0
-  | Some _ -> 1
+  | Some _ -> 1  (* Single round trip test *)
 
 let count_canonical_format_validation_assertions validation_opt =
   match validation_opt with
   | None -> 0
-  | Some _ -> 1
+  | Some _ -> 1  (* Single canonical format test *)
 
 let count_associativity_validation_assertions validation_opt =
   match validation_opt with
   | None -> 0
-  | Some _ -> 1
+  | Some _ -> 1  (* Single associativity test *)
 
 (* Count total assertions in a test case *)
 let count_test_case_assertions test_case =
@@ -158,12 +196,12 @@ let count_test_case_assertions test_case =
   count_associativity_validation_assertions validations.associativity
 
 (* Helper functions for structured tag analysis *)
-let extract_function_tags tags = List.filter (fun tag -> String.starts_with ~prefix:"function:" tag) tags
-let extract_feature_tags tags = List.filter (fun tag -> String.starts_with ~prefix:"feature:" tag) tags
-let extract_behavior_tags tags = List.filter (fun tag -> String.starts_with ~prefix:"behavior:" tag) tags
-let extract_variant_tags tags = List.filter (fun tag -> String.starts_with ~prefix:"variant:" tag) tags
+let extract_function_tags tags = List.filter (fun tag -> starts_with_prefix "function:" tag) tags
+let extract_feature_tags tags = List.filter (fun tag -> starts_with_prefix "feature:" tag) tags
+let extract_behavior_tags tags = List.filter (fun tag -> starts_with_prefix "behavior:" tag) tags
+let extract_variant_tags tags = List.filter (fun tag -> starts_with_prefix "variant:" tag) tags
 
-(* Check if a test should be skipped or ignored with centralized filtering *)
+(* Check if a test should be skipped or ignored with structured filtering only *)
 let should_skip_test config test_case =
   let tags = test_case.meta.tags in
   
@@ -174,20 +212,13 @@ let should_skip_test config test_case =
   
   (* Extract structured tag categories *)
   let function_tags = extract_function_tags tags in
-  let _feature_tags = extract_feature_tags tags in  (* For future use *)
+  let feature_tags = extract_feature_tags tags in  (* Now implemented *)
   let behavior_tags = extract_behavior_tags tags in
   let variant_tags = extract_variant_tags tags in
   
-  (* 1. Check for explicit tag-based skipping first (backwards compatibility) *)
-  let has_skip_tag = List.exists (fun tag -> List.mem tag config.skip_tags) tags in
-  if has_skip_tag then
-    let skip_tag = List.find (fun tag -> List.mem tag config.skip_tags) tags in
-    Some (Skipped (LegacyTag skip_tag, "Legacy tag '" ^ skip_tag ^ "' is not supported"))
-  else
-  
-  (* 2. Check function requirements - skip if any required function is not implemented *)
+  (* 1. Check function requirements - skip if any required function is not implemented *)
   let required_functions = List.map (fun tag -> 
-    String.sub tag 9 (String.length tag - 9) (* Remove "function:" prefix *)
+    String.sub tag 9 (String.length tag - 9) |> normalize_tag_name (* Remove "function:" prefix and normalize *)
   ) function_tags in
   let has_unimplemented_function = List.exists (fun func -> List.mem func config.skip_functions) required_functions in
   if has_unimplemented_function then
@@ -195,9 +226,19 @@ let should_skip_test config test_case =
     Some (Skipped (UnimplementedFunction unimpl_func, "Function '" ^ unimpl_func ^ "' is not implemented"))
   else
 
+  (* 2. Check feature requirements - skip if test requires unsupported feature *)
+  let required_features = List.map (fun tag ->
+    String.sub tag 8 (String.length tag - 8) |> normalize_tag_name (* Remove "feature:" prefix and normalize *)
+  ) feature_tags in
+  let has_unsupported_feature = List.exists (fun feat -> List.mem feat config.skip_features) required_features in
+  if has_unsupported_feature then
+    let unsup_feat = List.find (fun feat -> List.mem feat config.skip_features) required_features in
+    Some (Skipped (UnimplementedFunction unsup_feat, "Feature '" ^ unsup_feat ^ "' is not implemented"))
+  else
+
   (* 3. Check behavior requirements - skip if test requires unsupported behavior *)  
   let required_behaviors = List.map (fun tag ->
-    String.sub tag 9 (String.length tag - 9) (* Remove "behavior:" prefix *)
+    String.sub tag 9 (String.length tag - 9) |> normalize_tag_name (* Remove "behavior:" prefix and normalize *)
   ) behavior_tags in
   let has_unsupported_behavior = List.exists (fun behav -> List.mem behav config.skip_behaviors) required_behaviors in
   if has_unsupported_behavior then
@@ -207,35 +248,14 @@ let should_skip_test config test_case =
 
   (* 4. Check variant requirements - skip if test requires unsupported variant *)
   let required_variants = List.map (fun tag ->
-    String.sub tag 8 (String.length tag - 8) (* Remove "variant:" prefix *)
+    String.sub tag 8 (String.length tag - 8) |> normalize_tag_name (* Remove "variant:" prefix and normalize *)
   ) variant_tags in
   let has_unsupported_variant = List.exists (fun var -> List.mem var config.skip_variants) required_variants in
   if has_unsupported_variant then
     let unsup_var = List.find (fun var -> List.mem var config.skip_variants) required_variants in
     Some (Skipped (UnsupportedVariant unsup_var, "Variant '" ^ unsup_var ^ "' is not supported"))
   else
-
-  (* 5. Check proposed behavior skipping (legacy compatibility) *)
-  if config.skip_proposed && 
-     (List.mem "variant:proposed-behavior" tags || 
-      List.mem "proposed" tags || 
-      List.mem "proposed-behavior" tags) then
-    Some (Skipped (UnsupportedVariant "proposed-behavior", "Proposed behavior not implemented (using reference-compliant behavior)"))
-  else
-  
-  (* 6. Check legacy feature-based skipping *)
-  match test_case.meta.feature with
-  | Some feature ->
-      if List.mem feature config.ignored_features then
-        Some (Ignored ("Feature '" ^ feature ^ "' is ignored"))
-      else if List.mem feature config.skip_features then
-        Some (Skipped (UnimplementedFunction feature, "Feature '" ^ feature ^ "' is not implemented"))
-      else if config.skip_optional_features && 
-              List.exists (fun tag -> List.mem tag ["optional"; "advanced"]) tags then
-        Some (Skipped (UnsupportedBehavior "optional", "Optional feature skipped"))
-      else
-        None
-  | None -> None
+    None  (* All checks passed, test should run *)
 
 (* Convert JSON test case to Alcotest test *)
 let json_test_to_alcotest (test_case : Json_test_types.test_case) =
@@ -314,8 +334,15 @@ let execute_json_test_suite test_suite =
   execute_json_test_suite_with_config default_config test_suite
 
 (* Print test results summary *)
-let print_suite_result suite_result =
-  Printf.printf "\n=== %s ===\n" suite_result.suite_name;
+let print_suite_result ?file_name ?description suite_result =
+  Printf.printf "\n=== %s" suite_result.suite_name;
+  (match file_name with
+   | Some fname -> Printf.printf " (%s)" fname
+   | None -> ());
+  Printf.printf " ===\n";
+  (match description with
+   | Some desc -> Printf.printf "%s\n" desc
+   | None -> ());
   Printf.printf "Tests: %d | Passed: %d | Failed: %d" 
     suite_result.total_tests suite_result.passed_tests suite_result.failed_tests;
   
@@ -554,7 +581,7 @@ let run_test_file json_filename =
   try
     let test_suite = load_test_suite_from_file json_filename in
     let suite_result = execute_json_test_suite test_suite in
-    print_suite_result suite_result;
+    print_suite_result ~file_name:(Filename.basename json_filename) ?description:test_suite.description suite_result;
     if suite_result.failed_tests > 0 then exit 1 else exit 0
   with
   | exn ->
@@ -617,12 +644,10 @@ let run_categorized_tests directory =
     
     (* Run API tests first *)
     let api_results = List.map (fun file ->
-      Printf.printf "=== API Test: %s ===\n" (Filename.basename file);
-      flush_all ();
       try
         let test_suite = load_test_suite_from_file file in
         let suite_result = execute_json_test_suite test_suite in
-        print_suite_result suite_result;
+        print_suite_result ~file_name:(Printf.sprintf "API Test: %s" (Filename.basename file)) ?description:test_suite.description suite_result;
         Printf.printf "\n";
         flush_all ();
         (Filename.basename file, suite_result.failed_tests = 0, Some suite_result)
@@ -636,12 +661,10 @@ let run_categorized_tests directory =
     
     (* Run property tests second *)
     let property_results = List.map (fun file ->
-      Printf.printf "=== Property Test: %s ===\n" (Filename.basename file);
-      flush_all ();
       try
         let test_suite = load_test_suite_from_file file in
         let suite_result = execute_json_test_suite test_suite in
-        print_suite_result suite_result;
+        print_suite_result ~file_name:(Printf.sprintf "Property Test: %s" (Filename.basename file)) ?description:test_suite.description suite_result;
         Printf.printf "\n";
         flush_all ();
         (Filename.basename file, suite_result.failed_tests = 0, Some suite_result)
@@ -655,12 +678,10 @@ let run_categorized_tests directory =
     
     (* Run other tests third *)
     let other_results = List.map (fun file ->
-      Printf.printf "=== Other Test: %s ===\n" (Filename.basename file);
-      flush_all ();
       try
         let test_suite = load_test_suite_from_file file in
         let suite_result = execute_json_test_suite test_suite in
-        print_suite_result suite_result;
+        print_suite_result ~file_name:(Printf.sprintf "Other Test: %s" (Filename.basename file)) ?description:test_suite.description suite_result;
         Printf.printf "\n";
         flush_all ();
         (Filename.basename file, suite_result.failed_tests = 0, Some suite_result)
@@ -709,6 +730,59 @@ let run_categorized_tests directory =
     Printf.eprintf "Error reading directory %s: %s\n" directory msg;
     exit 1
 
+(* Display capability status with color coding *)
+let display_capability_status config (all_functions, all_features, all_behaviors, all_variants) =
+  let bold = "\027[1m" in
+  let reset = "\027[0m" in
+  let green = "\027[32m" in
+  let red = "\027[31m" in
+  let dim = "\027[2m" in
+  
+  let format_capability_list all_items skip_items =
+    List.map (fun item ->
+      if List.mem item skip_items then
+        Printf.sprintf "%s%s%s%s" red dim item reset
+      else
+        Printf.sprintf "%s%s%s%s" bold green item reset
+    ) all_items
+  in
+  
+  Printf.printf "%s🎯 CCL IMPLEMENTATION STATUS%s\n" bold reset;
+  Printf.printf "\n%s📚 Functions:%s %s\n" bold reset 
+    (String.concat " " (format_capability_list all_functions config.skip_functions));
+  Printf.printf "%s🎨 Features:%s %s\n" bold reset 
+    (String.concat " " (format_capability_list all_features config.skip_features));
+  Printf.printf "%s⚙️  Behaviors:%s %s\n" bold reset 
+    (String.concat " " (format_capability_list all_behaviors config.skip_behaviors));
+  Printf.printf "%s🔀 Variants:%s %s\n" bold reset 
+    (String.concat " " (format_capability_list all_variants config.skip_variants));
+  Printf.printf "\n%s%s✅ Enabled%s | %s%s❌ Disabled%s\n\n" bold green reset red dim reset
+
+(* Display configuration settings *)
+let display_configuration config =
+  let bold = "\027[1m" in
+  let reset = "\027[0m" in
+  let dim = "\027[2m" in
+  
+  Printf.printf "%s⚙️  CONFIGURATION%s\n" bold reset;
+  
+  if List.length config.skip_tests > 0 then
+    Printf.printf "%sSkipped Tests:%s %s\n" dim reset (String.concat ", " config.skip_tests);
+  
+  if List.length config.skip_functions > 0 then
+    Printf.printf "%sSkipped Functions:%s %s\n" dim reset (String.concat ", " config.skip_functions);
+  
+  if List.length config.skip_features > 0 then
+    Printf.printf "%sSkipped Features:%s %s\n" dim reset (String.concat ", " config.skip_features);
+  
+  if List.length config.skip_behaviors > 0 then
+    Printf.printf "%sSkipped Behaviors:%s %s\n" dim reset (String.concat ", " config.skip_behaviors);
+  
+  if List.length config.skip_variants > 0 then
+    Printf.printf "%sSkipped Variants:%s %s\n" dim reset (String.concat ", " config.skip_variants);
+  
+  Printf.printf "\n"
+
 (* Smart test runner with intelligent skipping *)
 let run_smart_tests directory =
   try
@@ -735,22 +809,24 @@ let run_smart_tests directory =
     let property_tests = List.rev property_tests in
     let unknown_tests = List.rev unknown_tests in
     
-    Printf.printf "🚀 Smart Test Run - Skipping Known Unimplemented Features\n";
+    (* Load all test suites to extract capabilities *)
+    let all_test_suites = List.map load_test_suite_from_file (api_tests @ property_tests @ unknown_tests) in
+    let capabilities = extract_capabilities_from_tests all_test_suites in
+    
+    Printf.printf "🚀 Smart Test Run - Progressive CCL Implementation\n";
     Printf.printf "Found %d API test files, %d property test files, %d other test files in %s\n\n" 
                   (List.length api_tests) (List.length property_tests) (List.length unknown_tests) directory;
-    Printf.printf "Configured to skip features: %s\n" (String.concat ", " default_config.skip_features);
-    Printf.printf "Configured to skip tags: %s\n" (String.concat ", " default_config.skip_tags);
-    Printf.printf "Skip proposed behaviors: %b\n\n" default_config.skip_proposed;
+    
+    display_configuration default_config;
+    display_capability_status default_config capabilities;
     flush_all ();
     
     (* Run API tests first with smart skipping *)
     let api_results = List.map (fun file ->
-      Printf.printf "=== API Test: %s ===\n" (Filename.basename file);
-      flush_all ();
       try
         let test_suite = load_test_suite_from_file file in
         let suite_result = execute_json_test_suite_with_config default_config test_suite in
-        print_suite_result suite_result;
+        print_suite_result ~file_name:(Filename.basename file) ?description:test_suite.description suite_result;
         Printf.printf "\n";
         flush_all ();
         (Filename.basename file, suite_result.failed_tests = 0, Some suite_result)
@@ -764,12 +840,10 @@ let run_smart_tests directory =
     
     (* Run property tests second with smart skipping *)
     let property_results = List.map (fun file ->
-      Printf.printf "=== Property Test: %s ===\n" (Filename.basename file);
-      flush_all ();
       try
         let test_suite = load_test_suite_from_file file in
         let suite_result = execute_json_test_suite_with_config default_config test_suite in
-        print_suite_result suite_result;
+        print_suite_result ~file_name:(Filename.basename file) ?description:test_suite.description suite_result;
         Printf.printf "\n";
         flush_all ();
         (Filename.basename file, suite_result.failed_tests = 0, Some suite_result)
@@ -783,12 +857,10 @@ let run_smart_tests directory =
     
     (* Run other tests third with smart skipping *)
     let other_results = List.map (fun file ->
-      Printf.printf "=== Other Test: %s ===\n" (Filename.basename file);
-      flush_all ();
       try
         let test_suite = load_test_suite_from_file file in
         let suite_result = execute_json_test_suite_with_config default_config test_suite in
-        print_suite_result suite_result;
+        print_suite_result ~file_name:(Filename.basename file) ?description:test_suite.description suite_result;
         Printf.printf "\n";
         flush_all ();
         (Filename.basename file, suite_result.failed_tests = 0, Some suite_result)
@@ -818,24 +890,59 @@ let run_smart_tests directory =
       | None -> (total, passed, failed, skipped, ignored)
     ) (0, 0, 0, 0, 0) results in
     
-    (* Enhanced Summary *)
-    Printf.printf "=== 🎯 SMART TEST SUMMARY ===\n";
-    Printf.printf "Test Suites: %d total | %d passed | %d failed\n" suite_total suite_passed suite_failed;
-    Printf.printf "Individual Tests: %d total | %d passed | %d failed | %d skipped | %d ignored\n" 
-      test_total test_passed test_failed test_skipped test_ignored;
-    Printf.printf "Success Rate: %.1f%% (excluding skipped/ignored)\n"
-      (if (test_passed + test_failed) > 0 then (float_of_int test_passed /. float_of_int (test_passed + test_failed)) *. 100.0 else 0.0);
-    Printf.printf "Coverage: %.1f%% (tests actually run)\n"
-      (if test_total > 0 then (float_of_int (test_passed + test_failed) /. float_of_int test_total) *. 100.0 else 0.0);
+    (* Enhanced Summary with Implementation Status *)
+    let bold = "\027[1m" in
+    let reset = "\027[0m" in
+    let green = "\027[32m" in
+    let red = "\027[31m" in
+    let yellow = "\027[33m" in
+    let cyan = "\027[36m" in
+    
+    Printf.printf "=== %s🎯 SMART TEST SUMMARY%s ===\n" bold reset;
+    Printf.printf "Test Suites: %d total | %s%d passed%s | %s%d failed%s\n" 
+      suite_total green suite_passed reset red suite_failed reset;
+    Printf.printf "Individual Tests: %d total | %s%d passed%s | %s%d failed%s | %s%d skipped%s | %d ignored\n" 
+      test_total green test_passed reset red test_failed reset yellow test_skipped reset test_ignored;
+    Printf.printf "Success Rate: %s%.1f%%%s (excluding skipped/ignored)\n"
+      (if (test_passed + test_failed) > 0 then green else red)
+      (if (test_passed + test_failed) > 0 then (float_of_int test_passed /. float_of_int (test_passed + test_failed)) *. 100.0 else 0.0)
+      reset;
+    Printf.printf "Coverage: %s%.1f%%%s (tests actually run)\n"
+      cyan
+      (if test_total > 0 then (float_of_int (test_passed + test_failed) /. float_of_int test_total) *. 100.0 else 0.0)
+      reset;
+    
+    (* Use cached capabilities from start of run *)
+    let (all_functions, all_features, all_behaviors, all_variants) = capabilities in
+    
+    (* Implementation Progress Summary *)
+    let enabled_functions = List.length (List.filter (fun f -> not (List.mem f default_config.skip_functions)) all_functions) in
+    let enabled_features = List.length (List.filter (fun f -> not (List.mem f default_config.skip_features)) all_features) in
+    let enabled_behaviors = List.length (List.filter (fun b -> not (List.mem b default_config.skip_behaviors)) all_behaviors) in
+    let enabled_variants = List.length (List.filter (fun v -> not (List.mem v default_config.skip_variants)) all_variants) in
+    
+    Printf.printf "\n%s📊 IMPLEMENTATION PROGRESS%s\n" bold reset;
+    Printf.printf "Functions: %s%d/%d%s (%s%.1f%%%s)\n" 
+      green enabled_functions (List.length all_functions) reset
+      green ((float_of_int enabled_functions) /. (float_of_int (List.length all_functions)) *. 100.0) reset;
+    Printf.printf "Features: %s%d/%d%s (%s%.1f%%%s)\n" 
+      green enabled_features (List.length all_features) reset
+      green ((float_of_int enabled_features) /. (float_of_int (List.length all_features)) *. 100.0) reset;
+    Printf.printf "Behaviors: %s%d/%d%s (%s%.1f%%%s)\n" 
+      green enabled_behaviors (List.length all_behaviors) reset
+      green ((float_of_int enabled_behaviors) /. (float_of_int (List.length all_behaviors)) *. 100.0) reset;
+    Printf.printf "Variants: %s%d/%d%s (configuration choice)\n" 
+      green enabled_variants (List.length all_variants) reset;
     
     if suite_failed > 0 then (
-      Printf.printf "\n❌ Failed suites (actual issues):\n";
+      Printf.printf "\n%s❌ Failed suites (actual issues):%s\n" red reset;
       List.iter (fun (name, success, _) ->
         if not success then Printf.printf "- %s\n" name
       ) results
     );
     
-    Printf.printf "\n💡 Tip: Use 'run-categorized' to see all tests including unimplemented features\n";
+    Printf.printf "\n";
+    display_configuration default_config;
     
     exit (if suite_failed = 0 then 0 else 1)
     
