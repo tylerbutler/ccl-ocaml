@@ -92,14 +92,26 @@ clean-build:
 # Regenerate OCaml types from JSON schema
 regenerate-types:
     @echo "🔄 Regenerating OCaml types from JSON schema..."
-    @echo "  📄 Converting schema to ATD..."
-    jsonschema2atd test_json_suite/working_test_schema.json -o test_json_suite/ccl_test_types.atd
+    @echo "  🛠️ Preprocessing original schema (addresses jsonschema2atd issues #10, #11, #13)..."
+    jq -f scripts/preprocess-original-schema.jq ../ccl-test-data/schemas/generated-format.json > test_json_suite/preprocessed_schema.json
+    @echo "  📄 Converting preprocessed schema to ATD..."
+    opam exec -- jsonschema2atd test_json_suite/preprocessed_schema.json > test_json_suite/ccl_test_types.atd
+    @echo "  🔧 Post-processing ATD to simplify type names and structure..."
+    sed -i 's/cCLTestCurrentFlatFormatTests/test_case/g' test_json_suite/ccl_test_types.atd
+    sed -i 's/cCLTestCurrentFlatFormatTestsValidation/validation_type/g' test_json_suite/ccl_test_types.atd
+    sed -i 's/cCLTestCurrentFlatFormat/test_suite/g' test_json_suite/ccl_test_types.atd
+    sed -i 's/cCLTestCurrentFlatFormatTests/test_case/g' test_json_suite/ccl_test_types.atd
+    sed -i 's/(\*-flat\.json)/(star-flat.json)/g' test_json_suite/ccl_test_types.atd
+    echo '' >> test_json_suite/ccl_test_types.atd
+    echo 'type root = test_case list' >> test_json_suite/ccl_test_types.atd
     @echo "  🏗️ Generating OCaml types..."
-    atdgen -t test_json_suite/ccl_test_types.atd
+    opam exec -- atdgen -t test_json_suite/ccl_test_types.atd
     @echo "  📦 Generating JSON serialization..."
-    atdgen -j test_json_suite/ccl_test_types.atd
+    opam exec -- atdgen -j test_json_suite/ccl_test_types.atd
     @echo "  🔨 Building with new types..."
     opam exec -- dune build
+    @echo "  🧹 Cleaning up temporary files..."
+    rm -f test_json_suite/preprocessed_schema.json
     @echo "✅ Type regeneration complete!"
 
 # Generate OCaml test code from a JSON file (advanced usage)

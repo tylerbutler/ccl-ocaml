@@ -74,3 +74,28 @@ let key_val k v = Fix (KeyMap.singleton k (key v))
 let of_list = List.fold_left merge empty
 let nested k vals = Fix (KeyMap.singleton k (of_list vals))
 let ( =: ) = key_val
+
+let get_string (Fix map) path =
+  try
+    match KeyMap.find path map with
+    | Fix inner_map when KeyMap.cardinal inner_map = 1 ->
+        (* If there's exactly one entry, treat its key as the string value *)
+        let (key, _) = KeyMap.choose inner_map in
+        Some key
+    | Fix inner_map when KeyMap.is_empty inner_map ->
+        (* Empty map represents an empty string *)
+        Some ""
+    | _ ->
+        None
+  with
+  | Not_found -> None
+
+let get_list (Fix map) path =
+  try
+    match KeyMap.find path map with
+    | Fix inner_map ->
+        (* All keys in the inner map represent list elements *)
+        KeyMap.fold (fun key _value acc -> key :: acc) inner_map []
+        |> List.rev  (* Preserve order *)
+  with
+  | Not_found -> []

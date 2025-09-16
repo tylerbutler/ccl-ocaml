@@ -38,6 +38,16 @@ val fix : Parser.key_val list -> t
 (** Pretty-print the configuration. *)
 val pretty : t -> string
 
+(** [get_string model path] extracts a string value from the CCL model at the given path.
+    Returns [Some value] if found, [None] if not found.
+    Since all values in this implementation are strings, this should work for any leaf value. *)
+val get_string : t -> string -> string option
+
+(** [get_list model path] extracts a list of string values from the CCL model at the given path.
+    Returns a list of string values, empty list if not found.
+    Useful for keys that have multiple values (e.g., "key = value1" and "key = value2"). *)
+val get_list : t -> string -> string list
+
 (*
 (** A module to construct CCL config values in pure OCaml without going through
 the configuration. It uses the embeded Domain-Specific Language (eDSL) approach.
