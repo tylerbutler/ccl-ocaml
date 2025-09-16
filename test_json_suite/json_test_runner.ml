@@ -1188,6 +1188,8 @@ let main () =
       run_smart_tests directory
   | [| _; "analyze-proposed"; directory |] ->
       analyze_all_proposed_tests directory
+  | [| _; "run-enhanced"; json_file |] ->
+      Enhanced_test_runner.test_enhanced_runner json_file
   | _ ->
       Printf.eprintf "Usage:\n";
       Printf.eprintf "  %s generate <json_file> <output_file>\n" Sys.argv.(0);
@@ -1195,5 +1197,6 @@ let main () =
       Printf.eprintf "  %s run-all <directory>\n" Sys.argv.(0);
       Printf.eprintf "  %s run-categorized <directory>  # Run with API/property test classification\n" Sys.argv.(0);
       Printf.eprintf "  %s run-smart <directory>        # Run with intelligent skipping of unimplemented features\n" Sys.argv.(0);
+      Printf.eprintf "  %s run-enhanced <json_file>     # Run with enhanced partial validation engine\n" Sys.argv.(0);
       Printf.eprintf "  %s analyze-proposed <directory> # Analyze proposed tests to identify ones that actually pass\n" Sys.argv.(0);
       exit 1

@@ -17,7 +17,8 @@ The JSON test runner bridges the gap between the manual OCaml tests in `../test/
 
 - **`json_test_types.ml`** - Type definitions and JSON parsing for the CCL test schema
 - **`ccl_api_mapping.ml`** - Maps JSON test validations to actual CCL library function calls
-- **`json_test_runner.ml`** - Core test execution engine and OCaml test file generation
+- **`json_test_runner.ml`** - Legacy test execution engine and OCaml test file generation
+- **`enhanced_test_runner.ml`** - Enhanced partial validation execution engine (recommended)
 - **`test_json_suite.ml`** - Main CLI entry point
 
 ### Design Patterns
@@ -33,6 +34,12 @@ The JSON test runner bridges the gap between the manual OCaml tests in `../test/
 - Each validation type maps to specific CCL API calls
 - Results compared against expected values or error conditions
 - Detailed error reporting for mismatches
+
+**Enhanced Execution Strategy:**
+- **Partial Validation Execution** - Run implemented validations, skip unimplemented ones gracefully
+- **Dependency Resolution** - Topological sorting for CCL validation dependencies
+- **Execution Context Management** - Shared state between validations for data flow
+- **Enhanced Reporting** - Color-coded output with validation-level granularity
 
 ## Setup and Dependencies
 
@@ -76,8 +83,11 @@ ls _build/default/test_json_suite/test_json_suite.exe
 ### Command Line Interface
 
 ```bash
-# Run tests directly from JSON file
+# Run tests directly from JSON file (legacy runner)
 ./test_json_suite.exe run <json_file>
+
+# Run tests with enhanced partial validation execution 
+./test_json_suite.exe run-enhanced <json_file>
 
 # Run all JSON test files in a directory (cross-platform)
 ./test_json_suite.exe run-all <directory>
@@ -95,13 +105,16 @@ ls _build/default/test_json_suite/test_json_suite.exe
 # Build the test runner (from ccl-ocaml directory)
 dune build test_json_suite/test_json_suite.exe
 
-# Quick test - run all JSON test suites (recommended)
+# Quick test - run all JSON test suites (legacy runner)
 ./_build/default/test_json_suite/test_json_suite.exe run-all ../ccl-test-data/tests
 
-# Run individual test suites
+# Run individual test suites with enhanced partial validation (recommended)
+./_build/default/test_json_suite/test_json_suite.exe run-enhanced ../ccl-test-data/tests/api-core-ccl-parsing.json
+./_build/default/test_json_suite/test_json_suite.exe run-enhanced ../ccl-test-data/tests/api-experimental.json
+
+# Run individual test suites (legacy runner)
 ./_build/default/test_json_suite/test_json_suite.exe run ../ccl-test-data/tests/essential-parsing.json
 ./_build/default/test_json_suite/test_json_suite.exe run ../ccl-test-data/tests/comprehensive-parsing.json
-./_build/default/test_json_suite/test_json_suite.exe run ../ccl-test-data/tests/errors.json
 
 # Generate OCaml test files
 ./_build/default/test_json_suite/test_json_suite.exe generate ../ccl-test-data/tests/essential-parsing.json test_essential.ml
@@ -154,6 +167,65 @@ See `../ccl-test-data/OCaml_Test_Mapping.md` for a comprehensive mapping between
 - Equivalent JSON test cases in `../ccl-test-data/tests/`
 - Coverage analysis showing 100% feature parity + additional edge cases
 
+## Enhanced Test Runner
+
+The enhanced test runner implements the **Partial Validation Execution** strategy recommended in the Test Runner Implementation Guide. This enables progressive CCL implementation development by running implemented functions while gracefully skipping unimplemented ones.
+
+### Key Features
+
+**Partial Validation Execution:**
+- Tests can run **partially** - some validations execute, others skip gracefully
+- No more "all-or-nothing" test failures due to unimplemented functions
+- Supports incremental development of CCL implementations
+
+**Intelligent Dependency Resolution:**
+- Automatic topological sorting of CCL validation dependencies
+- Ensures proper execution order: Parse → Filter → Compose → Make Objects → Typed Access
+- Prevents dependency errors and enables data flow between validations
+
+**Enhanced Reporting:**
+- **Color-coded status indicators** for visual clarity
+- **Validation-level granularity** showing exactly what passed/failed/skipped
+- **Partial test tracking** with detailed breakdown of execution vs skip counts
+- **Professional terminal output** with proper formatting
+
+**Backward Compatibility:**
+- Preserves existing CLI interface - legacy `run` command unchanged
+- Type conversion layer between Enhanced and Legacy formats
+- Seamless integration with existing test infrastructure
+
+### Usage Examples
+
+```bash
+# Enhanced runner showing partial validation execution
+./_build/default/test_json_suite/test_json_suite.exe run-enhanced ../ccl-test-data/tests/api-experimental.json
+
+# Example output showing partial tests:
+# Tests: 10 | 1 passed | 0 failed | 9 partial | 0 skipped
+# - basic_dotted_key_expansion: 1/2 validations executed successfully
+#   1 executed, 1 skipped (expand_dotted not implemented)
+```
+
+**Test Status Classification:**
+- **Passed** - All validations executed and passed
+- **Failed** - At least one validation failed  
+- **Partial** - Some validations executed, others skipped
+- **Skipped** - Entire test skipped due to configuration
+
+### Architecture
+
+The enhanced runner uses a modular architecture:
+
+```ocaml
+Enhanced module → Dependencies → ExecutionContext → PartialValidationEngine → EnhancedReporting
+```
+
+**Enhanced Module**: New type system with validation-level tracking
+**Dependencies**: Topological sorting for CCL validation order
+**ExecutionContext**: Shared state management between validations  
+**PartialValidationEngine**: Core execution with graceful error handling
+**EnhancedReporting**: Color-coded terminal output with detailed breakdowns
+
 ## Current Implementation Status
 
 ### ✅ Implemented Features
@@ -164,6 +236,10 @@ See `../ccl-test-data/OCaml_Test_Mapping.md` for a comprehensive mapping between
 - Command line interface
 - Automatic test file generation
 - Detailed error reporting
+- **Enhanced partial validation execution engine**
+- **Dependency resolution with topological sorting**
+- **Color-coded terminal reporting**
+- **Backward compatibility layer**
 
 ### 🚧 Partially Implemented
 - Level 2 processing validations (filter, compose, expand_dotted)

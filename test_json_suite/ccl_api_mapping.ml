@@ -214,6 +214,18 @@ let get_list_from_path json_obj path =
   in
   access_path json_obj path
 
+(* Helper function for order-agnostic comparison while preserving duplicates *)
+let compare_unordered_lists expected actual =
+  let sort_json_list lst =
+    List.sort (fun a b -> String.compare (Yojson.Safe.to_string a) (Yojson.Safe.to_string b)) lst
+  in
+  match expected, actual with
+  | `List expected_list, `List actual_list ->
+      let sorted_expected = sort_json_list expected_list in
+      let sorted_actual = sort_json_list actual_list in
+      Yojson.Safe.equal (`List sorted_expected) (`List sorted_actual)
+  | _ -> Yojson.Safe.equal expected actual
+
 (* Execute Level 4: Typed access validation *)
 let execute_typed_access_case json_obj case_val access_type =
   match case_val with
@@ -258,6 +270,49 @@ let execute_typed_access_case json_obj case_val access_type =
                 then Ok ()
                 else Error (Printf.sprintf "List access mismatch: expected %s, got %s" 
                              (Yojson.Safe.to_string expected) (Yojson.Safe.to_string (`List actual_list)))
+            | Error err -> Error err)
+       | _ -> Error ("Unknown access type: " ^ access_type))
+  | TypedUnorderedResultCase { args; expected_unordered } ->
+      (match access_type with
+       | "get_string" ->
+           (match get_string_from_path json_obj args with
+            | Ok actual_value ->
+                if compare_unordered_lists expected_unordered (`String actual_value)
+                then Ok ()
+                else Error (Printf.sprintf "String access mismatch (unordered): expected %s, got %s" 
+                             (Yojson.Safe.to_string expected_unordered) actual_value)
+            | Error err -> Error err)
+       | "get_int" ->
+           (match get_int_from_path json_obj args with
+            | Ok actual_value ->
+                if compare_unordered_lists expected_unordered (`Int actual_value)
+                then Ok ()
+                else Error (Printf.sprintf "Int access mismatch (unordered): expected %s, got %d" 
+                             (Yojson.Safe.to_string expected_unordered) actual_value)
+            | Error err -> Error err)
+       | "get_bool" ->
+           (match get_bool_from_path json_obj args with
+            | Ok actual_value ->
+                if compare_unordered_lists expected_unordered (`Bool actual_value)
+                then Ok ()
+                else Error (Printf.sprintf "Bool access mismatch (unordered): expected %s, got %b" 
+                             (Yojson.Safe.to_string expected_unordered) actual_value)
+            | Error err -> Error err)
+       | "get_float" ->
+           (match get_float_from_path json_obj args with
+            | Ok actual_value ->
+                if compare_unordered_lists expected_unordered (`Float actual_value)
+                then Ok ()
+                else Error (Printf.sprintf "Float access mismatch (unordered): expected %s, got %f" 
+                             (Yojson.Safe.to_string expected_unordered) actual_value)
+            | Error err -> Error err)
+       | "get_list" ->
+           (match get_list_from_path json_obj args with
+            | Ok actual_list ->
+                if compare_unordered_lists expected_unordered (`List actual_list)
+                then Ok ()
+                else Error (Printf.sprintf "List access mismatch (unordered): expected %s, got %s" 
+                             (Yojson.Safe.to_string expected_unordered) (Yojson.Safe.to_string (`List actual_list)))
             | Error err -> Error err)
        | _ -> Error ("Unknown access type: " ^ access_type))
   | TypedErrorCase { args; error = _error } ->
@@ -311,6 +366,33 @@ let execute_pretty_print_validation (ccl_entries : Ccl.Parser.key_val list) vali
       else Error (Printf.sprintf "Pretty print validation failed: expected %s, got %s" 
                    expected_output pretty_output)
   | PrettyError _ -> Error "Pretty print error validation not implemented"
+
+(* Execute round trip validation *)
+let execute_round_trip_validation entries validation =
+  (* Use existing property test implementation *)
+  match entries with
+  | [] -> Error "No entries for round-trip validation"
+  | _ ->
+      let input = String.concat "\n" (List.map (fun e -> e.key ^ " = " ^ e.value) entries) in
+      Ccl_property_tests.execute_round_trip_validation input validation
+
+(* Execute canonical format validation *)
+let execute_canonical_format_validation entries validation =
+  (* Use existing property test implementation *)
+  match entries with
+  | [] -> Error "No entries for canonical format validation"
+  | _ ->
+      let input = String.concat "\n" (List.map (fun e -> e.key ^ " = " ^ e.value) entries) in
+      Ccl_property_tests.execute_canonical_format_validation input validation
+
+(* Execute associativity validation *)
+let execute_associativity_validation entries validation =
+  (* Use existing property test implementation *)
+  match entries with
+  | [] -> Error "No entries for associativity validation"
+  | _ ->
+      let input = String.concat "\n" (List.map (fun e -> e.key ^ " = " ^ e.value) entries) in
+      Ccl_property_tests.execute_associativity_validation input validation
 
 (* Execute property validations using the dedicated module *)
 let execute_property_validations test_case =

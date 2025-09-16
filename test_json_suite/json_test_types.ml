@@ -42,6 +42,10 @@ type typed_access_case =
       args : string list;
       expected : Yojson.Safe.t;
     }
+  | TypedUnorderedResultCase of {
+      args : string list;
+      expected_unordered : Yojson.Safe.t;
+    }
   | TypedErrorCase of {
       args : string list;
       error : error_validation;
@@ -94,20 +98,15 @@ type test_metadata = {
   level : int;
   feature : string option;
   difficulty : string option;
+  conflicts : string list option;
 }
 
 type test_config = {
-  skip_optional_features : bool;
-  ignored_features : string list;
-  skip_features : string list;
-  skip_proposed : bool;  (* Skip tests with "proposed" or "proposed-behavior" tags *)
-  skip_tags : string list;  (* Skip tests with these tags *)
-  skip_tests : string list;  (* Skip tests by exact name *)
-  (* New structured filtering options *)
-  skip_functions : string list;  (* Functions not implemented: e.g., ["filter"; "compose"; "pretty-print"] *)
-  skip_behaviors : string list;  (* Behaviors not supported: e.g., ["strict-spacing"; "tabs-preserve"] *)
-  skip_variants : string list;   (* Variants not supported: e.g., ["proposed-behavior"] *)
-  prefer_behaviors : (string * string) list;  (* Preferred behavior choices: e.g., [("crlf", "normalize-to-lf")] *)
+  skip_tests : string list;      (* Skip tests by exact name for known bugs *)
+  skip_functions : string list;  (* Functions not implemented: e.g., ["expand_dotted"; "pretty_print"] *)
+  skip_features : string list;   (* Features not supported: e.g., ["comments"; "unicode"] *)
+  skip_behaviors : string list;  (* Behaviors not supported: e.g., ["boolean_lenient"; "tabs_to_spaces"] *)
+  skip_variants : string list;   (* Variants not supported: e.g., ["proposed_behavior"] *)
 }
 
 type test_case = {
@@ -200,6 +199,10 @@ let parse_typed_access_case json =
       let args = json |> member "args" |> to_list |> List.map to_string in
       let expected = json |> member "expected" in
       TypedResultCase { args; expected }
+  | `Assoc _ when member "args" json <> `Null && member "expected_unordered" json <> `Null ->
+      let args = json |> member "args" |> to_list |> List.map to_string in
+      let expected_unordered = json |> member "expected_unordered" in
+      TypedUnorderedResultCase { args; expected_unordered }
   | `Assoc _ when member "args" json <> `Null && member "error" json <> `Null ->
       let args = json |> member "args" |> to_list |> List.map to_string in
       let error = { error = true; error_type = None; error_pattern = None; error_message = json |> member "error_message" |> to_string_option } in
@@ -268,7 +271,13 @@ let parse_test_metadata json =
   let level = json |> member "level" |> to_int in
   let feature = json |> member "feature" |> to_string_option in
   let difficulty = json |> member "difficulty" |> to_string_option in
-  { tags; level; feature; difficulty }
+  let conflicts = 
+    try 
+      Some (json |> member "conflicts" |> to_list |> List.map to_string)
+    with 
+    | Type_error _ -> None
+  in
+  { tags; level; feature; difficulty; conflicts }
 
 let parse_test_case json =
   let name = json |> member "name" |> to_string in
