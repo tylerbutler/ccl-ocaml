@@ -271,7 +271,7 @@ let main files capability_args verbose no_color show_capabilities _config_file =
   let (all_functions, all_features, all_behaviors) = get_all_capabilities () in
   
   (* Show configuration block at start *)
-  configuration_block capabilities "reference-compliant" "strict" all_functions all_features all_behaviors;
+  configuration_block capabilities "reference-compliant" all_functions all_features all_behaviors;
   printf "\n";
   
   (* Show capabilities being used *)
@@ -295,7 +295,7 @@ let main files capability_args verbose no_color show_capabilities _config_file =
   
   (* Show configuration block at end *)
   printf "\n";
-  configuration_block capabilities "reference-compliant" "strict" all_functions all_features all_behaviors;
+  configuration_block capabilities "reference-compliant" all_functions all_features all_behaviors;
   
   (* Exit with appropriate code *)
   let success = overall_summary.failed_tests = 0 && overall_summary.failed_files = 0 in
