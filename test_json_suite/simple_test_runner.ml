@@ -32,34 +32,94 @@ type overall_summary = {
 let execute_single_validation (test_case : test_case) =
   try
     (* Each test in flat format validates exactly one function *)
-    (* Convert new format to API mapping expected format *)
-    let validation_name = match test_case.validation with
-      | `Parse -> "parse"
-      | `Parse_value -> "parse_value"
-      | `Filter -> "filter"
-      | `Compose -> "compose"
-      | `Expand_dotted -> "expand_dotted"
-      | `Build_hierarchy -> "build_hierarchy"
-      | `Get_string -> "get_string"
-      | `Get_int -> "get_int"
-      | `Get_bool -> "get_bool"
-      | `Get_float -> "get_float"
-      | `Get_list -> "get_list"
-      | `Pretty_print -> "pretty_print"
-      | `Load -> "load"
-      | `Round_trip -> "round_trip"
-      | `Canonical_format -> "canonical_format"
-      | `Associativity -> "associativity"
-    in
+    (* Call the actual OCaml CCL API based on the validation type *)
+    match test_case.validation with
+    | `Parse -> 
+        (* Call Ccl.Parser.parse and verify expected_entries *)
+        (match Ccl.Parser.parse test_case.input with
+         | Ok entries -> 
+             (* Verify count if specified *)
+             let count_check = match test_case.expected_count with
+               | Some expected -> 
+                   if List.length entries = expected then Ok ()
+                   else Error (Printf.sprintf "Expected %d entries, got %d" expected (List.length entries))
+               | None -> Ok ()
+             in
+             (* Verify expected_entries if specified *)
+             let entries_check = match test_case.expected_entries with
+               | Some expected_list ->
+                   let actual_list = List.map (fun entry -> 
+                     { key = entry.Ccl.Parser.key; value = entry.Ccl.Parser.value }
+                   ) entries in
+                   if actual_list = expected_list then Ok ()
+                   else Error (Printf.sprintf "Expected entries mismatch. Expected: %s, Got: %s"
+                     (String.concat "; " (List.map (fun e -> e.key ^ "=" ^ e.value) expected_list))
+                     (String.concat "; " (List.map (fun e -> e.key ^ "=" ^ e.value) actual_list)))
+               | None -> Ok ()
+             in
+             (match count_check, entries_check with
+              | Ok (), Ok () -> Passed
+              | Error msg, _ -> Failed msg
+              | _, Error msg -> Failed msg)
+         | Error (`Parse_error msg) -> Failed ("Parse error: " ^ msg))
     
-    (* For now, return a simple mock validation result *)
-    (* TODO: Replace with actual CCL validation when implemented *)
-    let is_implemented = Test_capabilities.is_function_implemented validation_name in
+    | `Parse_value ->
+        (* Call Ccl.Parser.parse_value *)
+        (match Ccl.Parser.parse_value test_case.input with
+         | Ok entries ->
+             (* Verify count if specified *)
+             let count_check = match test_case.expected_count with
+               | Some expected -> 
+                   if List.length entries = expected then Ok ()
+                   else Error (Printf.sprintf "Expected %d entries, got %d" expected (List.length entries))
+               | None -> Ok ()
+             in
+             (* Verify expected_entries if specified *)
+             let entries_check = match test_case.expected_entries with
+               | Some expected_list ->
+                   let actual_list = List.map (fun entry -> 
+                     { key = entry.Ccl.Parser.key; value = entry.Ccl.Parser.value }
+                   ) entries in
+                   if actual_list = expected_list then Ok ()
+                   else Error (Printf.sprintf "Expected entries mismatch. Expected: %s, Got: %s"
+                     (String.concat "; " (List.map (fun e -> e.key ^ "=" ^ e.value) expected_list))
+                     (String.concat "; " (List.map (fun e -> e.key ^ "=" ^ e.value) actual_list)))
+               | None -> Ok ()
+             in
+             (match count_check, entries_check with
+              | Ok (), Ok () -> Passed
+              | Error msg, _ -> Failed msg
+              | _, Error msg -> Failed msg)
+         | Error (`Parse_error msg) -> Failed ("Parse_value error: " ^ msg))
     
-    if is_implemented then
-      Passed
-    else
-      Skipped (Printf.sprintf "Function %s not implemented" validation_name)
+    | `Build_hierarchy ->
+        (* Call Ccl.decode (which does Parser.parse |> Model.fix) *)
+        (match Ccl.decode test_case.input with
+         | Ok _model -> Passed  (* Successfully built hierarchy *)
+         | Error (`Parse_error msg) -> Failed ("Build_hierarchy error: " ^ msg))
+    
+    | `Pretty_print ->
+        (* Call Ccl.decode then Model.pretty *)
+        (match Ccl.decode test_case.input with
+         | Ok model -> 
+             let _pretty_output = Ccl.Model.pretty model in
+             Passed  (* Successfully pretty printed *)
+         | Error (`Parse_error msg) -> Failed ("Pretty_print error: " ^ msg))
+    
+    (* Unimplemented functions *)
+    | `Filter -> Skipped "Function filter not implemented"
+    | `Compose -> Skipped "Function compose not implemented" 
+    | `Expand_dotted -> Skipped "Function expand_dotted not implemented"
+    | `Get_string -> Skipped "Function get_string not implemented"
+    | `Get_int -> Skipped "Function get_int not implemented"
+    | `Get_bool -> Skipped "Function get_bool not implemented"
+    | `Get_float -> Skipped "Function get_float not implemented"
+    | `Get_list -> Skipped "Function get_list not implemented"
+    | `Load -> Skipped "Function load not implemented"
+    | `Round_trip -> Skipped "Function round_trip not implemented"
+    | `Canonical_format -> Skipped "Function canonical_format not implemented"
+    | `Associativity -> Skipped "Function associativity not implemented"
+    
   with
   | exn -> Failed (Printexc.to_string exn)
 

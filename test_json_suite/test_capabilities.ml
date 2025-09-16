@@ -9,25 +9,20 @@ type test_capabilities = {
   behaviors: string list;     (* e.g., ["crlf_normalize_to_lf"; "boolean_lenient"] *)
 }
 
-(* Default capabilities for the OCaml mock implementation *)
+(* Default capabilities for the OCaml implementation *)
 let default_capabilities = {
   functions = [
-    "parse";
-    "make_objects"; 
-    "get_string";
-    "get_int";
-    "get_bool";
-    "get_float";
-    "get_list";
-    "filter";
-    "compose";
-    "pretty_print";
+    "parse";                   (* Parser.parse - basic key-value parsing *)
+    "parse_value";             (* Parser.parse_value - parse with prefix calculation *)
+    "build_hierarchy";         (* Model.fix - convert flat entries to nested objects *)
+    "pretty_print";            (* Model.pretty - format CCL output *)
+    (* Unimplemented: get_string, get_int, get_bool, get_float, get_list, filter, compose *)
     (* "expand_dotted"; -- Not implemented yet *)
   ];
   features = [
-    "dotted_keys";
-    "empty_keys";
-    "comments";
+    (* "dotted_keys"; -- Not supported in current implementation *)
+    "empty_keys";              (* Should be supported *)
+    "comments";                (* Supported per README *)
     (* No unicode or multiline support yet *)
   ];
   behaviors = [
