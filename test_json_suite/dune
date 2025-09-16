@@ -1,10 +1,4 @@
 (executable
- (public_name test_json_suite)
- (name test_json_suite)
- (libraries ccl alcotest yojson)
- (modules test_json_suite json_test_types json_test_runner ccl_api_mapping ccl_property_tests enhanced_test_runner))
-
-(executable
  (public_name ccl-simple-test)
  (name simple_test_suite)
  (libraries ccl alcotest yojson cmdliner ocolor unix atdgen-runtime)

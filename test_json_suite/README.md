@@ -1,13 +1,13 @@
 # CCL JSON Test Suite Runner
 
-This directory contains a JSON test runner that allows the ccl-ocaml implementation to test against the standardized CCL test suite located in `../ccl-test-data/tests/`.
+This directory contains a simple JSON test runner that allows the ccl-ocaml implementation to test against the standardized CCL test suite located in `../ccl-test-data/generated_tests/`.
 
 ## Purpose
 
 The JSON test runner bridges the gap between the manual OCaml tests in `../test/` and the language-agnostic JSON test format. This enables:
 
 1. **Cross-implementation validation** - Ensure ccl-ocaml behaves consistently with other CCL implementations
-2. **Comprehensive test coverage** - Access to 148 test cases vs ~45 manual tests
+2. **Comprehensive test coverage** - Access to 452 test assertions across 167 tests vs ~45 manual tests
 3. **Standardized testing** - Use the same test cases across Gleam, OCaml, and future implementations
 4. **Enhanced edge case coverage** - Unicode support, complex whitespace handling, internationalization
 
@@ -15,31 +15,28 @@ The JSON test runner bridges the gap between the manual OCaml tests in `../test/
 
 ### Core Components
 
-- **`json_test_types.ml`** - Type definitions and JSON parsing for the CCL test schema
-- **`ccl_api_mapping.ml`** - Maps JSON test validations to actual CCL library function calls
-- **`json_test_runner.ml`** - Legacy test execution engine and OCaml test file generation
-- **`enhanced_test_runner.ml`** - Enhanced partial validation execution engine (recommended)
-- **`test_json_suite.ml`** - Main CLI entry point
+- **`ccl_test_types.atd`** - ATD type definitions for JSON test schema
+- **`ccl_test_types_t.ml`** - Generated OCaml types from ATD
+- **`ccl_test_types_j.ml`** - Generated JSON serialization from ATD  
+- **`simple_test_runner.ml`** - Core test execution engine with capability-based filtering
+- **`test_capabilities.ml`** - Capability detection and configuration system
+- **`test_output.ml`** - Color-coded test result output and reporting
+- **`cli_interface.ml`** - Modern CLI using Cmdliner for user-friendly interface
+- **`simple_test_suite.ml`** - Main entry point executable
 
 ### Design Patterns
 
-**4-Level CCL Architecture Support:**
-- Level 1: Entry parsing (`parse` validations)
-- Level 2: Processing (`filter`, `compose`, `expand_dotted` validations) 
-- Level 3: Object construction (`make_objects` validations)
-- Level 4: Typed access (`get_string`, `get_int`, etc. validations)
+**Simple Capability-Based Testing:**
+- **Feature-based filtering** - Tests tagged with `function:*`, `feature:*`, `behavior:*` capabilities
+- **Progressive implementation** - Run only tests for implemented capabilities
+- **Flat test format** - One test validates exactly one CCL function for predictability
+- **Smart skipping** - Automatically skip tests for unimplemented features
 
-**Validation Mapping:**
-- JSON test cases contain `validations` object with expected outcomes
-- Each validation type maps to specific CCL API calls
-- Results compared against expected values or error conditions
-- Detailed error reporting for mismatches
-
-**Enhanced Execution Strategy:**
-- **Partial Validation Execution** - Run implemented validations, skip unimplemented ones gracefully
-- **Dependency Resolution** - Topological sorting for CCL validation dependencies
-- **Execution Context Management** - Shared state between validations for data flow
-- **Enhanced Reporting** - Color-coded output with validation-level granularity
+**Modern Architecture:**
+- **ATD-based types** - Generated type-safe JSON parsing from schema
+- **Cmdliner CLI** - Professional command-line interface with help and validation
+- **Color-coded output** - Visual test results with proper terminal formatting
+- **Capability configuration** - Load capability sets from files or command line
 
 ## Setup and Dependencies
 
@@ -80,55 +77,44 @@ ls _build/default/test_json_suite/test_json_suite.exe
 
 ## Usage
 
-### Command Line Interface
+### Quick Start with Just Commands
+
+The easiest way to use the test runner is through the provided justfile commands:
 
 ```bash
-# Run tests directly from JSON file (legacy runner)
-./test_json_suite.exe run <json_file>
+# Recommended: Smart tests with feature skipping
+just test-smart
 
-# Run tests with enhanced partial validation execution 
-./test_json_suite.exe run-enhanced <json_file>
+# Quick health check of core functionality  
+just health-check
 
-# Run all JSON test files in a directory (cross-platform)
-./test_json_suite.exe run-all <directory>
+# Run tests that currently pass completely
+just test-working
 
-# Generate OCaml test file from JSON
-./test_json_suite.exe generate <json_file> <output_file>
+# Run all tests (includes unimplemented features)
+just test-all
 
-# Show usage help
-./test_json_suite.exe
+# Show test suite statistics
+just stats
 ```
 
-### Running Tests
+### Direct Command Line Usage
 
 ```bash
-# Build the test runner (from ccl-ocaml directory)
-dune build test_json_suite/test_json_suite.exe
+# Build the test runner
+just build
 
-# Quick test - run all JSON test suites (legacy runner)
-./_build/default/test_json_suite/test_json_suite.exe run-all ../ccl-test-data/tests
+# Run tests with default capabilities
+opam exec -- dune exec test_json_suite/simple_test_suite.exe -- ccl-simple-test ../ccl-test-data/generated_tests/api_comments.json
 
-# Run individual test suites with enhanced partial validation (recommended)
-./_build/default/test_json_suite/test_json_suite.exe run-enhanced ../ccl-test-data/tests/api-core-ccl-parsing.json
-./_build/default/test_json_suite/test_json_suite.exe run-enhanced ../ccl-test-data/tests/api-experimental.json
+# Run with specific capabilities
+opam exec -- dune exec test_json_suite/simple_test_suite.exe -- ccl-simple-test --cap function:parse --cap feature:comments ../ccl-test-data/generated_tests/
 
-# Run individual test suites (legacy runner)
-./_build/default/test_json_suite/test_json_suite.exe run ../ccl-test-data/tests/essential-parsing.json
-./_build/default/test_json_suite/test_json_suite.exe run ../ccl-test-data/tests/comprehensive-parsing.json
+# Run with verbose output
+opam exec -- dune exec test_json_suite/simple_test_suite.exe -- ccl-simple-test -v ../ccl-test-data/generated_tests/
 
-# Generate OCaml test files
-./_build/default/test_json_suite/test_json_suite.exe generate ../ccl-test-data/tests/essential-parsing.json test_essential.ml
-```
-
-### Dune Integration
-
-The `dune` file includes automatic test generation rules:
-
-```dune
-(rule
- (target test_essential_parsing.ml)
- (deps (glob_files ../../ccl-test-data/tests/essential-parsing.json))
- (action (run ./test_json_suite.exe generate essential-parsing.json %{target})))
+# Show available capabilities
+opam exec -- dune exec test_json_suite/simple_test_suite.exe -- ccl-simple-test --show-capabilities
 ```
 
 ### Directory Structure Requirements
@@ -136,29 +122,30 @@ The `dune` file includes automatic test generation rules:
 The test runner expects this project structure:
 
 ```
-ccl-ocaml/                    # Main project directory
-├── test_json_suite/          # JSON test runner (this directory)
-│   ├── test_json_suite.exe   # Built executable
+ccl-ocaml/                      # Main project directory
+├── test_json_suite/            # JSON test runner (this directory)
+│   ├── simple_test_suite.exe   # Built executable (ccl-simple-test)
 │   └── ...
-└── ../ccl-test-data/         # Test data repository (sibling directory)
-    └── tests/                # JSON test files
-        ├── essential-parsing.json
-        ├── comprehensive-parsing.json
+└── ../ccl-test-data/           # Test data repository (sibling directory)
+    └── generated_tests/        # JSON test files
+        ├── api_comments.json
+        ├── api_essential_parsing.json
+        ├── property_algebraic.json
         └── ...
 ```
 
-#### Latest Complete Test Results
+### Latest Test Results
 
-Running all 148 tests across 10 test suites:
+Current implementation status using `just health-check`:
 
 ```
-=== OVERALL SUMMARY ===
-Test Suites: 10 total | 3 passed | 7 failed  
-Individual Tests: 117 total | 104 passed | 13 failed (88.9% success)
+✅ Health check complete!
+- Comments: Full support with 100% pass rate
+- Algebraic properties: Core validation working
 ```
 
-**Perfect Suites (100% pass):** comments, dotted-keys, object-construction  
-**Main Issues:** Whitespace handling, round-trip formatting, multi-entry parsing
+**Working Features:** Comment parsing, basic algebraic properties
+**In Progress:** Full API parsing, object construction, typed access
 
 ## Test Coverage Mapping
 
@@ -167,127 +154,68 @@ See `../ccl-test-data/OCaml_Test_Mapping.md` for a comprehensive mapping between
 - Equivalent JSON test cases in `../ccl-test-data/tests/`
 - Coverage analysis showing 100% feature parity + additional edge cases
 
-## Enhanced Test Runner
+## Current Implementation Features
 
-The enhanced test runner implements the **Partial Validation Execution** strategy recommended in the Test Runner Implementation Guide. This enables progressive CCL implementation development by running implemented functions while gracefully skipping unimplemented ones.
+The current simple test runner provides:
 
-### Key Features
+**Capability-Based Testing:**
+- **Smart filtering** - Run only tests for implemented capabilities
+- **Progressive development** - Add capabilities incrementally as features are implemented
+- **Clear skipping** - Verbose output shows exactly what's skipped and why
+- **Configuration support** - Load capability sets from files
 
-**Partial Validation Execution:**
-- Tests can run **partially** - some validations execute, others skip gracefully
-- No more "all-or-nothing" test failures due to unimplemented functions
-- Supports incremental development of CCL implementations
+**Modern CLI:**
+- **Cmdliner interface** - Professional help, validation, and error messages
+- **Color-coded output** - Visual test status with proper terminal formatting
+- **Flexible input** - Run single files, directories, or filtered test sets
+- **Just integration** - Convenient just commands for common workflows
 
-**Intelligent Dependency Resolution:**
-- Automatic topological sorting of CCL validation dependencies
-- Ensures proper execution order: Parse → Filter → Compose → Make Objects → Typed Access
-- Prevents dependency errors and enables data flow between validations
-
-**Enhanced Reporting:**
-- **Color-coded status indicators** for visual clarity
-- **Validation-level granularity** showing exactly what passed/failed/skipped
-- **Partial test tracking** with detailed breakdown of execution vs skip counts
-- **Professional terminal output** with proper formatting
-
-**Backward Compatibility:**
-- Preserves existing CLI interface - legacy `run` command unchanged
-- Type conversion layer between Enhanced and Legacy formats
-- Seamless integration with existing test infrastructure
-
-### Usage Examples
-
-```bash
-# Enhanced runner showing partial validation execution
-./_build/default/test_json_suite/test_json_suite.exe run-enhanced ../ccl-test-data/tests/api-experimental.json
-
-# Example output showing partial tests:
-# Tests: 10 | 1 passed | 0 failed | 9 partial | 0 skipped
-# - basic_dotted_key_expansion: 1/2 validations executed successfully
-#   1 executed, 1 skipped (expand_dotted not implemented)
-```
-
-**Test Status Classification:**
-- **Passed** - All validations executed and passed
-- **Failed** - At least one validation failed  
-- **Partial** - Some validations executed, others skipped
-- **Skipped** - Entire test skipped due to configuration
-
-### Architecture
-
-The enhanced runner uses a modular architecture:
-
-```ocaml
-Enhanced module → Dependencies → ExecutionContext → PartialValidationEngine → EnhancedReporting
-```
-
-**Enhanced Module**: New type system with validation-level tracking
-**Dependencies**: Topological sorting for CCL validation order
-**ExecutionContext**: Shared state management between validations  
-**PartialValidationEngine**: Core execution with graceful error handling
-**EnhancedReporting**: Color-coded terminal output with detailed breakdowns
+**Type Safety:**
+- **ATD-generated types** - Type-safe JSON parsing from schema definitions
+- **Compile-time validation** - Catch schema mismatches at build time
+- **Maintainable code** - Clear separation between types, parsing, and logic
 
 ## Current Implementation Status
 
 ### ✅ Implemented Features
-- JSON schema parsing with full validation support
-- Level 1 parsing validation (entry parsing)
-- Basic pretty printing validation
-- Round-trip testing validation
-- Command line interface
-- Automatic test file generation
-- Detailed error reporting
-- **Enhanced partial validation execution engine**
-- **Dependency resolution with topological sorting**
-- **Color-coded terminal reporting**
-- **Backward compatibility layer**
+- **ATD-based type system** with generated OCaml types and JSON serialization
+- **Capability-based test filtering** with feature tags
+- **Modern CLI interface** using Cmdliner with help and validation
+- **Color-coded test output** with proper terminal formatting
+- **Smart test skipping** for unimplemented features
+- **Just integration** with convenient workflow commands
+- **Comment parsing** validation (100% working)
+- **Basic algebraic properties** validation
 
-### 🚧 Partially Implemented
-- Level 2 processing validations (filter, compose, expand_dotted)
-- Level 3 object construction validation
-- Level 4 typed access validation
+### 🚧 In Progress
+- **API parsing** validations (essential parsing features)
+- **Object construction** validation
+- **Typed access** validation (get_string, get_int, etc.)
+- **Advanced features** (dotted keys, processing operations)
 
 ### ⏳ Future Enhancements
-- Associativity and algebraic property validation
-- Enhanced error pattern matching
-- Performance benchmarking integration
-- Parallel test execution
-
-## Error Handling
-
-The test runner provides detailed error messages:
-
-```
-=== CCL Essential Parsing (Validation Format) ===
-Total: 18 | Passed: 14 | Failed: 4
-
-Failed tests:
-- no_equals_continuation:
-  * parse: Expected successful parse but got error: : end_of_input
-- crlf_normalization:
-  * parse: Parse mismatch: expected 2 entries, got 2 entries
-```
-
-## Extension Points
-
-To add support for new validation types:
-
-1. **Add type definition** in `json_test_types.ml`
-2. **Add JSON parser** in the same file
-3. **Add validation executor** in `ccl_api_mapping.ml`
-4. **Wire into main executor** in the `execute_validation` function
+- **Complete API coverage** for all CCL functions
+- **Performance benchmarking** integration
+- **Enhanced error reporting** with detailed context
+- **Configuration file** support for persistent capability sets
 
 ## Dependencies
 
-- **yojson** (>= 2.0.0) - JSON parsing and manipulation
-- **alcotest** - Test framework integration  
 - **ccl** - The core CCL library being tested
+- **cmdliner** - Modern CLI interface with help and validation
+- **ocolor** - Terminal color output support
+- **yojson** - JSON parsing and manipulation  
+- **alcotest** - Test framework integration
+- **atdgen-runtime** - ATD runtime for generated types
+- **unix** - System utilities
 
-## Integration with Existing Tests
+## Integration with Project
 
-The JSON test runner is designed to complement, not replace, the existing OCaml tests:
+The JSON test runner complements the existing test infrastructure:
 
-- **Manual tests** (`../test/`) continue to provide property-based testing, stress testing, and OCaml-specific validations
-- **JSON tests** add comprehensive edge case coverage and cross-language validation
-- **Both suites** run in parallel to ensure complete test coverage
+- **Manual tests** (`../test/`) provide property-based testing and OCaml-specific validation
+- **JSON tests** provide standardized cross-implementation testing with comprehensive edge cases
+- **Just commands** provide convenient workflow integration for development
+- **Capability system** enables progressive implementation without breaking the workflow
 
-This dual approach provides the best of both worlds: manual OCaml-specific testing for library correctness and standardized JSON testing for cross-implementation consistency.
+This approach allows incremental development while maintaining compatibility with the broader CCL testing ecosystem.
