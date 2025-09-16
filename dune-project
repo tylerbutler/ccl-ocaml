@@ -35,6 +35,8 @@
      (and
       :with-test
       (>= 2.0.0)))
+   (cmdliner (>= 1.3.0))
+   (ocolor (>= 1.3.0))
  )
  (tags
   (config language parser)))
