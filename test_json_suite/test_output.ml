@@ -161,28 +161,50 @@ let filtering_info total_tests runnable_tests skipped_tests =
     printf "Test filtering: %d total → %d runnable, %d skipped\n" 
       total_tests runnable_tests skipped_tests
 
-(* Configuration display block *)
-let configuration_block caps variant behaviors =
-  let border = String.make 60 '=' in
+(* Format capability list with color coding *)
+let format_capability_list all_items enabled_items =
+  List.map (fun item ->
+    if List.mem item enabled_items then
+      if !use_colors then
+        Printf.sprintf "@{<bold>@{<green>%s@}@}" item
+      else
+        Printf.sprintf "✓%s" item
+    else
+      if !use_colors then
+        Printf.sprintf "@{<dim>@{<red>%s@}@}" item
+      else
+        Printf.sprintf "✗%s" item
+  ) all_items
+
+(* Enhanced configuration display block with dynamic capability discovery *)
+let configuration_block caps variant behaviors all_functions all_features all_behaviors =
+  let border = String.make 70 '=' in
+  
+  let functions_display = format_capability_list all_functions caps.Test_capabilities.functions in
+  let features_display = format_capability_list all_features caps.Test_capabilities.features in
+  let behaviors_display = format_capability_list all_behaviors caps.Test_capabilities.behaviors in
+  
   if !use_colors then (
     printf "@{<bold>@{<blue>%s@}@}\n" border;
     printf "@{<bold>@{<blue>🎯 CCL TEST RUNNER CONFIGURATION@}@}\n";
     printf "@{<bold>@{<blue>%s@}@}\n" border;
-    printf "@{<bold>Functions (enabled):@} @{<green>%s@}\n" (String.concat ", " caps.Test_capabilities.functions);
-    printf "@{<bold>Features (enabled):@} @{<cyan>%s@}\n" (String.concat ", " caps.Test_capabilities.features);
-    printf "@{<bold>Behaviors (enabled):@} @{<yellow>%s@}\n" (String.concat ", " caps.Test_capabilities.behaviors);
-    printf "@{<bold>Variant chosen:@} @{<magenta>%s@}\n" variant;
-    printf "@{<bold>Behavior mode:@} @{<magenta>%s@}\n" behaviors;
+    printf "@{<bold>Functions:@} %s\n" (String.concat " " functions_display);
+    printf "@{<bold>Features:@}  %s\n" (String.concat " " features_display);
+    printf "@{<bold>Behaviors:@} %s\n" (String.concat " " behaviors_display);
+    printf "@{<bold>Variant:@}   @{<magenta>%s@}\n" variant;
+    printf "@{<bold>Mode:@}      @{<magenta>%s@}\n" behaviors;
+    printf "@{<bold>Legend:@}    @{<bold>@{<green>enabled@}@} @{<dim>@{<red>disabled@}@}\n";
     printf "@{<bold>@{<blue>%s@}@}\n" border
   ) else (
     printf "%s\n" border;
     printf "🎯 CCL TEST RUNNER CONFIGURATION\n";
     printf "%s\n" border;
-    printf "Functions (enabled): %s\n" (String.concat ", " caps.Test_capabilities.functions);
-    printf "Features (enabled): %s\n" (String.concat ", " caps.Test_capabilities.features);
-    printf "Behaviors (enabled): %s\n" (String.concat ", " caps.Test_capabilities.behaviors);
-    printf "Variant chosen: %s\n" variant;
-    printf "Behavior mode: %s\n" behaviors;
+    printf "Functions: %s\n" (String.concat " " functions_display);
+    printf "Features:  %s\n" (String.concat " " features_display);
+    printf "Behaviors: %s\n" (String.concat " " behaviors_display);
+    printf "Variant:   %s\n" variant;
+    printf "Mode:      %s\n" behaviors;
+    printf "Legend:    ✓enabled ✗disabled\n";
     printf "%s\n" border
   )
 

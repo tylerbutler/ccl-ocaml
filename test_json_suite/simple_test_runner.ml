@@ -97,6 +97,23 @@ let run_single_test test_case _capabilities verbose =
     if verbose then test_skipped_msg test_case.name reason;
     Skipped reason
 
+(* All available capabilities discovered from the CCL test suite *)
+let get_all_capabilities () =
+  let all_functions = [
+    "parse"; "parse_value"; "filter"; "expand_dotted"; "build_hierarchy";
+    "get_string"; "get_int"; "get_bool"; "get_float"; "get_list";
+    "canonical_format"
+  ] in
+  let all_features = [
+    "comments"; "experimental_dotted_keys"
+  ] in
+  let all_behaviors = [
+    "boolean_strict"; "boolean_lenient"; "crlf_normalize_to_lf"; 
+    "crlf_preserve_literal"; "strict_spacing"; "tabs_preserve";
+    "list_coercion_enabled"; "list_coercion_disabled"
+  ] in
+  (all_functions, all_features, all_behaviors)
+
 (* Calculate summary from test results *)
 let calculate_summary results file_name =
   let total = List.length results in
@@ -250,8 +267,11 @@ let main files capability_args verbose no_color show_capabilities _config_file =
   let user_capabilities = build_capabilities_from_args capability_args in
   let capabilities = merge_capabilities user_capabilities in
   
+  (* Get all available capabilities *)
+  let (all_functions, all_features, all_behaviors) = get_all_capabilities () in
+  
   (* Show configuration block at start *)
-  configuration_block capabilities "reference-compliant" "strict";
+  configuration_block capabilities "reference-compliant" "strict" all_functions all_features all_behaviors;
   printf "\n";
   
   (* Show capabilities being used *)
@@ -275,7 +295,7 @@ let main files capability_args verbose no_color show_capabilities _config_file =
   
   (* Show configuration block at end *)
   printf "\n";
-  configuration_block capabilities "reference-compliant" "strict";
+  configuration_block capabilities "reference-compliant" "strict" all_functions all_features all_behaviors;
   
   (* Exit with appropriate code *)
   let success = overall_summary.failed_tests = 0 && overall_summary.failed_files = 0 in
