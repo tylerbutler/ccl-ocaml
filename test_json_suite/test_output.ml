@@ -182,9 +182,9 @@ let print_capability_list all_items enabled_items =
   ) all_items
 
 (* Enhanced configuration display block with dynamic capability discovery *)
-let configuration_block caps variant all_functions all_features all_behaviors =
+let configuration_block caps current_variant all_functions all_features all_behaviors all_variants =
   let border = String.make 70 '=' in
-  
+
   if !use_colors then (
     printf "@{<bold>@{<blue>%s@}@}\n" border;
     printf "@{<bold>@{<blue>🎯 CCL TEST RUNNER CONFIGURATION@}@}\n";
@@ -198,7 +198,9 @@ let configuration_block caps variant all_functions all_features all_behaviors =
     printf "@{<bold>Behaviors:@} ";
     print_capability_list all_behaviors caps.Test_capabilities.behaviors;
     printf "\n";
-    printf "@{<bold>Variant:@}   @{<magenta>%s@}\n" variant;
+    printf "@{<bold>Variants:@}  ";
+    print_capability_list all_variants [current_variant];
+    printf "\n";
     printf "@{<bold>Legend:@}    @{<bold>@{<green>enabled@}@} @{<dim>@{<red>disabled@}@}\n";
     printf "@{<bold>@{<blue>%s@}@}\n" border
   ) else (
@@ -214,7 +216,9 @@ let configuration_block caps variant all_functions all_features all_behaviors =
     printf "Behaviors: ";
     print_capability_list all_behaviors caps.Test_capabilities.behaviors;
     printf "\n";
-    printf "Variant:   %s\n" variant;
+    printf "Variants:  ";
+    print_capability_list all_variants [current_variant];
+    printf "\n";
     printf "Legend:    ✓enabled ✗disabled\n";
     printf "%s\n" border
   )

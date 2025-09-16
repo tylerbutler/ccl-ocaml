@@ -16,7 +16,9 @@ let default_capabilities = {
     "parse_value";             (* Parser.parse_value - parse with prefix calculation *)
     "build_hierarchy";         (* Model.fix - convert flat entries to nested objects *)
     "pretty_print";            (* Model.pretty - format CCL output *)
-    (* Unimplemented: get_string, get_int, get_bool, get_float, get_list, filter, compose *)
+    "get_string";              (* Model.get_string - extract string values by path *)
+    "get_list";                (* Model.get_list - extract list values by path *)
+    (* Unimplemented: get_int, get_bool, get_float, filter, compose *)
     (* "expand_dotted"; -- Not implemented yet *)
   ];
   features = [
