@@ -161,6 +161,43 @@ let filtering_info total_tests runnable_tests skipped_tests =
     printf "Test filtering: %d total → %d runnable, %d skipped\n" 
       total_tests runnable_tests skipped_tests
 
+(* Configuration display block *)
+let configuration_block caps variant behaviors =
+  let border = String.make 60 '=' in
+  if !use_colors then (
+    printf "@{<bold>@{<blue>%s@}@}\n" border;
+    printf "@{<bold>@{<blue>🎯 CCL TEST RUNNER CONFIGURATION@}@}\n";
+    printf "@{<bold>@{<blue>%s@}@}\n" border;
+    printf "@{<bold>Functions (enabled):@} @{<green>%s@}\n" (String.concat ", " caps.Test_capabilities.functions);
+    printf "@{<bold>Features (enabled):@} @{<cyan>%s@}\n" (String.concat ", " caps.Test_capabilities.features);
+    printf "@{<bold>Behaviors (enabled):@} @{<yellow>%s@}\n" (String.concat ", " caps.Test_capabilities.behaviors);
+    printf "@{<bold>Variant chosen:@} @{<magenta>%s@}\n" variant;
+    printf "@{<bold>Behavior mode:@} @{<magenta>%s@}\n" behaviors;
+    printf "@{<bold>@{<blue>%s@}@}\n" border
+  ) else (
+    printf "%s\n" border;
+    printf "🎯 CCL TEST RUNNER CONFIGURATION\n";
+    printf "%s\n" border;
+    printf "Functions (enabled): %s\n" (String.concat ", " caps.Test_capabilities.functions);
+    printf "Features (enabled): %s\n" (String.concat ", " caps.Test_capabilities.features);
+    printf "Behaviors (enabled): %s\n" (String.concat ", " caps.Test_capabilities.behaviors);
+    printf "Variant chosen: %s\n" variant;
+    printf "Behavior mode: %s\n" behaviors;
+    printf "%s\n" border
+  )
+
+(* Skipped assertions summary for a test suite *)
+let skipped_assertions_summary file_name skipped_results =
+  if List.length skipped_results > 0 then (
+    subsection_header ("Skipped Assertions: " ^ file_name);
+    List.iter (fun (test_name, reason) ->
+      if !use_colors then
+        printf "  @{<yellow>⚪@} @{<bold>%s@}: %s\n" test_name reason
+      else
+        printf "  ⚪ %s: %s\n" test_name reason
+    ) skipped_results
+  )
+
 (* Exit status formatting *)
 let final_result_msg success =
   printf "\n";

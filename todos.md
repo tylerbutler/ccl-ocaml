@@ -1,0 +1,7 @@
+# Project Todos
+
+## Active
+
+## Completed
+- [x] Test runner needs to output how it's configured (behaviors, variant chosen, etc.) - show as a block at the top and bottom of the output | Done: 09-15-2025
+- [x] Test runner should show what asserts are skipped and why for each test suite/group | Done: 09-15-2025

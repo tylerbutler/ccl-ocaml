@@ -124,6 +124,14 @@ let run_test_file test_cases file_name capabilities verbose =
   test_summary ~total:summary.total ~passed:summary.passed 
                ~failed:summary.failed ~skipped:summary.skipped;
   
+  (* Show skipped assertions details for this file *)
+  let skipped_details = List.filter_map (fun (test_case, result) ->
+    match result with
+    | Skipped reason -> Some (test_case.name, reason)
+    | _ -> None
+  ) (List.combine test_cases results) in
+  skipped_assertions_summary file_name skipped_details;
+  
   (* Show error details if there were failures *)
   if summary.failed > 0 then (
     error_details_header ();
@@ -242,6 +250,10 @@ let main files capability_args verbose no_color show_capabilities _config_file =
   let user_capabilities = build_capabilities_from_args capability_args in
   let capabilities = merge_capabilities user_capabilities in
   
+  (* Show configuration block at start *)
+  configuration_block capabilities "reference-compliant" "strict";
+  printf "\n";
+  
   (* Show capabilities being used *)
   if verbose then (
     section_header "Test Configuration";
@@ -260,6 +272,10 @@ let main files capability_args verbose no_color show_capabilities _config_file =
     printf "\nFiles processed: %d | Failed to process: %d\n" 
       overall_summary.total_files overall_summary.failed_files
   );
+  
+  (* Show configuration block at end *)
+  printf "\n";
+  configuration_block capabilities "reference-compliant" "strict";
   
   (* Exit with appropriate code *)
   let success = overall_summary.failed_tests = 0 && overall_summary.failed_files = 0 in
