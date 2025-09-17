@@ -12,43 +12,43 @@ build:
 # Run smart tests (recommended) - skips known unimplemented features
 test-smart:
     @echo "🚀 Running smart tests with intelligent skipping..."
-    opam exec -- dune exec test_json_suite/simple_test_suite.exe -- ccl-simple-test ../ccl-test-data/generated_tests
+    opam exec -- dune exec test_json_suite/simple_test_suite.exe -- ccl-simple-test -v ../ccl-test-data/generated_tests
 
 # Run all tests with categorization - shows everything including optional features
 test-all:
     @echo "📊 Running all tests with full categorization..."
-    opam exec -- dune exec test_json_suite/simple_test_suite.exe -- ccl-simple-test ../ccl-test-data/generated_tests
+    opam exec -- dune exec test_json_suite/simple_test_suite.exe -- ccl-simple-test -v ../ccl-test-data/generated_tests
 
 # Run tests without categorization (legacy mode)
 test-legacy:
     @echo "📋 Running tests in legacy mode..."
-    opam exec -- dune exec test_json_suite/simple_test_suite.exe -- ccl-simple-test ../ccl-test-data/generated_tests
+    opam exec -- dune exec test_json_suite/simple_test_suite.exe -- ccl-simple-test -v ../ccl-test-data/generated_tests
 
 # Run a specific test file
 test-file FILE:
     @echo "🎯 Running single test file: {{FILE}}"
-    opam exec -- dune exec test_json_suite/simple_test_suite.exe -- ccl-simple-test {{FILE}}
+    opam exec -- dune exec test_json_suite/simple_test_suite.exe -- ccl-simple-test -v {{FILE}}
 
 # Run only working tests (comments and algebraic properties)
 test-working:
     @echo "✅ Running only tests that pass completely..."
-    @opam exec -- dune exec test_json_suite/simple_test_suite.exe -- ccl-simple-test ../ccl-test-data/generated_tests/api_comments.json
-    @opam exec -- dune exec test_json_suite/simple_test_suite.exe -- ccl-simple-test ../ccl-test-data/generated_tests/property_algebraic.json
+    @opam exec -- dune exec test_json_suite/simple_test_suite.exe -- ccl-simple-test -v ../ccl-test-data/generated_tests/api_comments.json
+    @opam exec -- dune exec test_json_suite/simple_test_suite.exe -- ccl-simple-test -v ../ccl-test-data/generated_tests/property_algebraic.json
 
 # Run only API tests
 test-api:
     @echo "🔧 Running API tests..."
     @for file in ../ccl-test-data/generated_tests/api_*.json; do \
         echo "Running $$(basename $$file)..."; \
-        opam exec -- dune exec test_json_suite/simple_test_suite.exe -- ccl-simple-test "$$file" || true; \
+        opam exec -- dune exec test_json_suite/simple_test_suite.exe -- ccl-simple-test -v "$$file" || true; \
     done
 
-# Run only property tests  
+# Run only property tests
 test-property:
     @echo "🧮 Running property tests..."
     @for file in ../ccl-test-data/generated_tests/property_*.json; do \
         echo "Running $$(basename $$file)..."; \
-        opam exec -- dune exec test_json_suite/simple_test_suite.exe -- ccl-simple-test "$$file" || true; \
+        opam exec -- dune exec test_json_suite/simple_test_suite.exe -- ccl-simple-test -v "$$file" || true; \
     done
 
 # Run tests for a specific feature (e.g., just test-feature dotted-keys)
@@ -57,7 +57,7 @@ test-feature FEATURE:
     @for file in ../ccl-test-data/generated_tests/*{{FEATURE}}*.json; do \
         if [ -f "$$file" ]; then \
             echo "Running $$(basename $$file)..."; \
-            opam exec -- dune exec test_json_suite/simple_test_suite.exe -- ccl-simple-test "$$file" || true; \
+            opam exec -- dune exec test_json_suite/simple_test_suite.exe -- ccl-simple-test -v "$$file" || true; \
         fi \
     done
 
@@ -65,9 +65,9 @@ test-feature FEATURE:
 health-check:
     @echo "🏥 Running health check (core working features only)..."
     @echo "Testing comments..."
-    @opam exec -- dune exec test_json_suite/simple_test_suite.exe -- ccl-simple-test ../ccl-test-data/generated_tests/api_comments.json
+    @opam exec -- dune exec test_json_suite/simple_test_suite.exe -- ccl-simple-test -v ../ccl-test-data/generated_tests/api_comments.json
     @echo "Testing algebraic properties..."
-    @opam exec -- dune exec test_json_suite/simple_test_suite.exe -- ccl-simple-test ../ccl-test-data/generated_tests/property_algebraic.json
+    @opam exec -- dune exec test_json_suite/simple_test_suite.exe -- ccl-simple-test -v ../ccl-test-data/generated_tests/property_algebraic.json
     @echo "✅ Health check complete!"
 
 # Show test suite statistics

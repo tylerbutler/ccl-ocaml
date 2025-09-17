@@ -205,86 +205,51 @@ let discover_capabilities_from_files files =
       let content = In_channel.with_open_text file In_channel.input_all in
       let json = Yojson.Basic.from_string content in
       match json with
-      | `List test_cases ->
-          List.iter (fun test_case ->
-            match test_case with
-            | `Assoc fields ->
-                List.iter (fun (key, value) ->
-                  match key, value with
-                  | "functions", `List funcs ->
-                      List.iter (fun f -> match f with
-                        | `String func -> if not (List.mem func !all_functions) then all_functions := func :: !all_functions
-                        | _ -> ()) funcs
-                  | "features", `List feats ->
-                      List.iter (fun f -> match f with
-                        | `String feat -> if not (List.mem feat !all_features) then all_features := feat :: !all_features
-                        | _ -> ()) feats
-                  | "behaviors", `List behs ->
-                      List.iter (fun b -> match b with
-                        | `String beh -> if not (List.mem beh !all_behaviors) then all_behaviors := beh :: !all_behaviors
-                        | _ -> ()) behs
-                  | "variants", `List vars ->
-                      List.iter (fun v -> match v with
-                        | `String var -> if not (List.mem var !all_variants) then all_variants := var :: !all_variants
-                        | _ -> ()) vars
+      | `Assoc top_level_fields ->
+          (* Handle test_suite format: {"tests": [...]} *)
+          List.iter (fun (key, value) ->
+            match key, value with
+            | "tests", `List test_cases ->
+                List.iter (fun test_case ->
+                  match test_case with
+                  | `Assoc fields ->
+                      List.iter (fun (key, value) ->
+                        match key, value with
+                        | "functions", `List funcs ->
+                            List.iter (fun f -> match f with
+                              | `String func -> if not (List.mem func !all_functions) then all_functions := func :: !all_functions
+                              | _ -> ()) funcs
+                        | "features", `List feats ->
+                            List.iter (fun f -> match f with
+                              | `String feat -> if not (List.mem feat !all_features) then all_features := feat :: !all_features
+                              | _ -> ()) feats
+                        | "behaviors", `List behs ->
+                            List.iter (fun b -> match b with
+                              | `String beh -> if not (List.mem beh !all_behaviors) then all_behaviors := beh :: !all_behaviors
+                              | _ -> ()) behs
+                        | "variants", `List vars ->
+                            List.iter (fun v -> match v with
+                              | `String var -> if not (List.mem var !all_variants) then all_variants := var :: !all_variants
+                              | _ -> ()) vars
+                        | _ -> ()
+                      ) fields
                   | _ -> ()
-                ) fields
+                ) test_cases
             | _ -> ()
-          ) test_cases
+          ) top_level_fields
       | _ -> ()
     with
     | _ -> ()  (* Skip files that can't be parsed *)
   ) files;
 
-  (* Add known capabilities from schema to ensure completeness *)
-  let schema_functions = [
-    "parse"; "parse_value"; "filter"; "expand_dotted"; "build_hierarchy";
-    "get_string"; "get_int"; "get_bool"; "get_float"; "get_list";
-    "canonical_format"; "load"; "round_trip"; "associativity"
-  ] in
-  let schema_features = [
-    "comments"; "empty_keys"; "experimental_dotted_keys";
-    "multiline"; "unicode"; "whitespace"
-  ] in
-  let schema_behaviors = [
-    "boolean_strict"; "boolean_lenient"; "crlf_preserve_literal"; "crlf_normalize_to_lf";
-    "tabs_preserve"; "tabs_to_spaces"; "strict_spacing"; "loose_spacing";
-    "list_coercion_enabled"; "list_coercion_disabled"
-  ] in
-  let schema_variants = [
-    "proposed_behavior"; "reference_compliant"
-  ] in
-
-  (* Merge discovered with schema-defined *)
-  let merge_unique existing schema =
-    List.fold_left (fun acc item ->
-      if List.mem item acc then acc else item :: acc
-    ) existing schema |> List.sort String.compare
-  in
-
-  let final_functions = merge_unique !all_functions schema_functions in
-  let final_features = merge_unique !all_features schema_features in
-  let final_behaviors = merge_unique !all_behaviors schema_behaviors in
-  let final_variants = merge_unique !all_variants schema_variants in
+  (* Return discovered capabilities directly from JSON files *)
+  let final_functions = List.sort String.compare !all_functions in
+  let final_features = List.sort String.compare !all_features in
+  let final_behaviors = List.sort String.compare !all_behaviors in
+  let final_variants = List.sort String.compare !all_variants in
 
   (final_functions, final_features, final_behaviors, final_variants)
 
-(* All available capabilities discovered from the CCL test suite *)
-let get_all_capabilities () =
-  let all_functions = [
-    "parse"; "parse_value"; "filter"; "expand_dotted"; "build_hierarchy";
-    "get_string"; "get_int"; "get_bool"; "get_float"; "get_list";
-    "canonical_format"
-  ] in
-  let all_features = [
-    "comments"; "experimental_dotted_keys"
-  ] in
-  let all_behaviors = [
-    "boolean_strict"; "boolean_lenient"; "crlf_normalize_to_lf";
-    "crlf_preserve_literal"; "strict_spacing"; "tabs_preserve";
-    "list_coercion_enabled"; "list_coercion_disabled"
-  ] in
-  (all_functions, all_features, all_behaviors)
 
 (* Calculate summary from test results *)
 let calculate_summary results file_name =
