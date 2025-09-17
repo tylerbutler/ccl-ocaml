@@ -31,8 +31,9 @@ let default_capabilities = {
     "crlf_normalize_to_lf";    (* We normalize CRLF to LF *)
     "boolean_strict";          (* Use strict boolean parsing *)
     "strict_spacing";          (* Support strict spacing *)
-    "tabs_preserve";           (* Preserve tabs *)
+    "tabs_to_spaces";          (* Convert tabs to spaces *)
     "crlf_preserve_literal";   (* Preserve CRLF in literals when needed *)
+    "list_coercion_disabled";  (* Disable automatic list coercion *)
     (* "boolean_lenient" -- Not supported, we use strict *)
   ];
 }
