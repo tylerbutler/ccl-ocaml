@@ -160,6 +160,25 @@ let execute_single_validation (test_case : test_case) =
   with
   | exn -> Failed (Printexc.to_string exn)
 
+(* Convert feature type to string for compatibility checking *)
+let feature_to_string = function
+  | `Comments -> "comments"
+  | `Empty_keys -> "empty_keys"
+  | `Experimental_dotted_keys -> "experimental_dotted_keys"
+  | `Multiline -> "multiline"
+  | `Unicode -> "unicode"
+  | `Whitespace -> "whitespace"
+
+(* Check if all required features are supported *)
+let check_test_case_features (test_case : test_case) =
+  let required_features = List.map feature_to_string test_case.features in
+  let unsupported_features = List.filter (fun feature ->
+    not (List.mem feature Test_capabilities.default_capabilities.features)
+  ) required_features in
+  match unsupported_features with
+  | [] -> None (* All features supported *)
+  | features -> Some features (* Some features not supported *)
+
 (* Run a single test case with capability checking *)
 let run_single_test test_case _capabilities verbose =
   (* For flat format, we simple check if the validation function is implemented *)
@@ -180,18 +199,28 @@ let run_single_test test_case _capabilities verbose =
     | `Canonical_format -> "canonical_format"
     | `Associativity -> "associativity"
   in
-  
-  if Test_capabilities.is_function_implemented validation_name then
-    let result = execute_single_validation test_case in
-    (match result with
-     | Passed -> if verbose then test_passed_msg test_case.name
-     | Failed error_msg -> test_failed_msg test_case.name error_msg
-     | Skipped reason -> if verbose then test_skipped_msg test_case.name reason);
-    result
-  else
-    let reason = Printf.sprintf "Function %s not implemented" validation_name in
-    if verbose then test_skipped_msg test_case.name reason;
-    Skipped reason
+
+  (* Check feature compatibility first *)
+  let feature_compatibility_result = check_test_case_features test_case in
+  match feature_compatibility_result with
+  | Some unsupported_features ->
+      let reason = Printf.sprintf "Required features not supported: %s"
+        (String.concat ", " unsupported_features) in
+      if verbose then test_skipped_msg test_case.name reason;
+      Skipped reason
+  | None ->
+      (* All features supported, check function implementation *)
+      if Test_capabilities.is_function_implemented validation_name then
+        let result = execute_single_validation test_case in
+        (match result with
+         | Passed -> if verbose then test_passed_msg test_case.name
+         | Failed error_msg -> test_failed_msg test_case.name error_msg
+         | Skipped reason -> if verbose then test_skipped_msg test_case.name reason);
+        result
+      else
+        let reason = Printf.sprintf "Function %s not implemented" validation_name in
+        if verbose then test_skipped_msg test_case.name reason;
+        Skipped reason
 
 (* Discover capabilities from JSON test files by parsing them directly *)
 let discover_capabilities_from_files files =
