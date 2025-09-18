@@ -1,6 +1,6 @@
-# CCL-OCaml Bug Reports
+# CCL-OCaml Reports
 
-This directory contains bug reports for the CCL-OCaml implementation based on test suite analysis.
+This directory contains consolidated bug reports and analysis for the CCL-OCaml implementation.
 
 ## Report Summary
 
@@ -31,13 +31,20 @@ This directory contains bug reports for the CCL-OCaml implementation based on te
 - **Issue**: Generic "not enough input" errors for malformed CCL
 - **Root Cause**: Limited error message specificity
 
+### BUG-004: Pretty-Print Round-Trip Identity Failure
+- **Severity**: Critical (Design Issue)
+- **Component**: `lib/model.ml` (Pretty-printer and data model)
+- **Issue**: Cannot maintain round-trip identity for multiline values that start on line after key
+- **Root Cause**: Fundamental mismatch between data model normalization and pretty-printer assumptions
+
 ## Root Cause Analysis
 
-The 9 test failures group into 3 distinct categories:
+The identified issues group into 4 distinct categories:
 
-1. **Parser Logic Gaps** (4 failures): Core parsing logic incomplete for full CCL spec
-2. **Missing Features** (5 failures): Planned but unimplemented typed access functions
-3. **Error Handling** (3 failures): Limited error message quality for malformed inputs
+1. **Parser Logic Gaps** (4 test failures): Core parsing logic incomplete for full CCL spec
+2. **Missing Features** (5 test failures): Planned but unimplemented typed access functions
+3. **Error Handling** (3 test failures): Limited error message quality for malformed inputs
+4. **Design Issues** (1 architectural issue): Fundamental round-trip identity limitations
 
 ## Methodology
 
