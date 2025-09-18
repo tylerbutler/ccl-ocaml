@@ -5,15 +5,27 @@
 default:
     @just --list
 
-# Initialize dependencies (run once for new setup)
-deps:
-    @echo "🔧 Initializing OCaml dependencies..."
+# Create opam switch (run once for new setup)
+switch:
     @echo "📦 Creating opam switch..."
     opam switch create . --deps-only -y
+
+# Install project dependencies from opam file
+install-deps:
     @echo "📚 Installing project dependencies..."
-    opam install . --deps-only -y
-    @echo "🛠️ Installing additional dev dependencies..."
+    opam install . --deps-only --with-test -y
+
+# Install development tools (optional)
+install-dev-tools:
+    @echo "🛠️ Installing development tools..."
     opam install utop ocamlformat ocaml-lsp-server -y
+
+# Install dependencies only (most common case)
+deps: install-deps
+    @echo "✅ Project dependencies installed!"
+
+# Full dependency initialization (combines all steps)
+deps-init: switch install-deps install-dev-tools
     @echo "✅ Dependencies initialized successfully!"
     @echo ""
     @echo "Next steps:"
@@ -138,8 +150,10 @@ help:
     @echo "OCaml CCL JSON Test Suite"
     @echo "========================="
     @echo ""
-    @echo "Setup (run once):"
-    @echo "  just deps            # Initialize opam switch and install dependencies"
+    @echo "Setup:"
+    @echo "  just deps            # Install dependencies (most common)"
+    @echo "  just deps-init       # Full setup: create switch + install all dependencies"
+    @echo "  just switch          # Create opam switch only"
     @echo ""
     @echo "Quick start:"
     @echo "  just test-smart      # Recommended: smart tests with feature skipping"

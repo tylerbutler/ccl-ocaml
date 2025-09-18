@@ -37,6 +37,7 @@
       (>= 2.0.0)))
    (cmdliner (>= 1.3.0))
    (ocolor (>= 1.3.0))
+   (atdgen-runtime :with-test)
  )
  (tags
   (config language parser)))
