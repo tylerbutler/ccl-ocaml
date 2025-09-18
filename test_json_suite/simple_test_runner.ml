@@ -180,47 +180,53 @@ let check_test_case_features (test_case : test_case) =
   | features -> Some features (* Some features not supported *)
 
 (* Run a single test case with capability checking *)
-let run_single_test test_case _capabilities verbose =
-  (* For flat format, we simple check if the validation function is implemented *)
-  let validation_name = match test_case.validation with
-    | `Parse -> "parse"
-    | `Parse_value -> "parse_value"
-    | `Filter -> "filter"
-    | `Compose -> "compose"
-    | `Expand_dotted -> "expand_dotted"
-    | `Build_hierarchy -> "build_hierarchy"
-    | `Get_string -> "get_string"
-    | `Get_int -> "get_int"
-    | `Get_bool -> "get_bool"
-    | `Get_float -> "get_float"
-    | `Get_list -> "get_list"
-    | `Load -> "load"
-    | `Round_trip -> "round_trip"
-    | `Canonical_format -> "canonical_format"
-    | `Associativity -> "associativity"
-  in
+let run_single_test test_case _capabilities verbose exclude_tests =
+  (* Check if test is excluded by name *)
+  if List.mem test_case.name exclude_tests then
+    let reason = "Test excluded by name" in
+    if verbose then test_skipped_msg test_case.name reason;
+    Skipped reason
+  else
+    (* For flat format, we simple check if the validation function is implemented *)
+    let validation_name = match test_case.validation with
+      | `Parse -> "parse"
+      | `Parse_value -> "parse_value"
+      | `Filter -> "filter"
+      | `Compose -> "compose"
+      | `Expand_dotted -> "expand_dotted"
+      | `Build_hierarchy -> "build_hierarchy"
+      | `Get_string -> "get_string"
+      | `Get_int -> "get_int"
+      | `Get_bool -> "get_bool"
+      | `Get_float -> "get_float"
+      | `Get_list -> "get_list"
+      | `Load -> "load"
+      | `Round_trip -> "round_trip"
+      | `Canonical_format -> "canonical_format"
+      | `Associativity -> "associativity"
+    in
 
-  (* Check feature compatibility first *)
-  let feature_compatibility_result = check_test_case_features test_case in
-  match feature_compatibility_result with
-  | Some unsupported_features ->
-      let reason = Printf.sprintf "Required features not supported: %s"
-        (String.concat ", " unsupported_features) in
-      if verbose then test_skipped_msg test_case.name reason;
-      Skipped reason
-  | None ->
-      (* All features supported, check function implementation *)
-      if Test_capabilities.is_function_implemented validation_name then
-        let result = execute_single_validation test_case in
-        (match result with
-         | Passed -> if verbose then test_passed_msg test_case.name
-         | Failed error_msg -> test_failed_msg test_case.name error_msg
-         | Skipped reason -> if verbose then test_skipped_msg test_case.name reason);
-        result
-      else
-        let reason = Printf.sprintf "Function %s not implemented" validation_name in
+    (* Check feature compatibility first *)
+    let feature_compatibility_result = check_test_case_features test_case in
+    match feature_compatibility_result with
+    | Some unsupported_features ->
+        let reason = Printf.sprintf "Required features not supported: %s"
+          (String.concat ", " unsupported_features) in
         if verbose then test_skipped_msg test_case.name reason;
         Skipped reason
+    | None ->
+        (* All features supported, check function implementation *)
+        if Test_capabilities.is_function_implemented validation_name then
+          let result = execute_single_validation test_case in
+          (match result with
+           | Passed -> if verbose then test_passed_msg test_case.name
+           | Failed error_msg -> test_failed_msg test_case.name error_msg
+           | Skipped reason -> if verbose then test_skipped_msg test_case.name reason);
+          result
+        else
+          let reason = Printf.sprintf "Function %s not implemented" validation_name in
+          if verbose then test_skipped_msg test_case.name reason;
+          Skipped reason
 
 (* Discover capabilities from JSON test files by parsing them directly *)
 let discover_capabilities_from_files files =
@@ -295,11 +301,11 @@ let load_flat_test_file filename =
   test_suite.tests
 
 (* Run tests for a flat format test file *)
-let run_test_file test_cases file_name capabilities verbose =
+let run_test_file test_cases file_name capabilities verbose exclude_tests =
   file_header file_name;
-  
+
   let results = List.map (fun test_case ->
-    run_single_test test_case capabilities verbose
+    run_single_test test_case capabilities verbose exclude_tests
   ) test_cases in
   
   let summary = calculate_summary results file_name in
@@ -364,7 +370,7 @@ let expand_file_args file_args =
   |> List.rev
 
 (* Run tests for multiple files *)
-let run_multiple_files files capabilities verbose =
+let run_multiple_files files capabilities verbose exclude_tests =
   let json_files = expand_file_args files in
   
   if List.length json_files = 0 then (
@@ -377,7 +383,7 @@ let run_multiple_files files capabilities verbose =
   let file_summaries = List.map (fun file ->
     try
       let test_cases = load_flat_test_file file in
-      let summary = run_test_file test_cases (Filename.basename file) capabilities verbose in
+      let summary = run_test_file test_cases (Filename.basename file) capabilities verbose exclude_tests in
       (true, summary)
     with
     | exn ->
@@ -410,7 +416,9 @@ let show_default_capabilities () =
   info_msg "Use --cap function:name or --cap feature:name to specify custom capabilities"
 
 (* Main entry point *)
-let main files capability_args verbose no_color show_capabilities _config_file =
+let main files capability_args verbose no_color show_capabilities _config_file exclude_tests show_exclusions =
+  (* Merge user exclude_tests with default bug exclusions *)
+  let all_exclude_tests = Test_capabilities.default_test_exclusions @ exclude_tests in
   (* Initialize output formatting *)
   init_colors no_color;
   
@@ -419,9 +427,15 @@ let main files capability_args verbose no_color show_capabilities _config_file =
     show_default_capabilities ();
     exit 0
   );
+
+  (* Handle show exclusions *)
+  if show_exclusions then (
+    Test_capabilities.show_exclusion_summary ();
+    exit 0
+  );
   
-  (* Handle missing files *)
-  if List.length files = 0 then (
+  (* Handle missing files (unless showing capabilities/exclusions) *)
+  if List.length files = 0 && not show_capabilities && not show_exclusions then (
     error_msg "No test files specified";
     info_msg "Use --help for usage information";
     exit 1
@@ -447,7 +461,7 @@ let main files capability_args verbose no_color show_capabilities _config_file =
   );
   
   (* Run the tests *)
-  let overall_summary = run_multiple_files files capabilities verbose in
+  let overall_summary = run_multiple_files files capabilities verbose all_exclude_tests in
   
   (* Show final results *)
   section_header "Overall Results";

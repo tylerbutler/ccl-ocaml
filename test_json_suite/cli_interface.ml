@@ -4,9 +4,9 @@ open Cmdliner
 
 (* CLI argument definitions *)
 
-let test_files_arg = 
-  let doc = "JSON test files or directories to run" in
-  Arg.(non_empty & pos_all string [] & info [] ~docv:"FILES" ~doc)
+let test_files_arg =
+  let doc = "JSON test files or directories to run (optional for --show-* commands)" in
+  Arg.(value & pos_all string [] & info [] ~docv:"FILES" ~doc)
 
 let capabilities_arg =
   let doc = "Enable specific capability (function:parse, feature:comments, behavior:strict_spacing)" in
@@ -24,9 +24,17 @@ let show_capabilities_arg =
   let doc = "Show available capabilities and exit" in
   Arg.(value & flag & info ["show-capabilities"] ~doc)
 
+let show_exclusions_arg =
+  let doc = "Show excluded tests summary and exit" in
+  Arg.(value & flag & info ["show-exclusions"] ~doc)
+
 let config_file_arg =
   let doc = "Load capabilities from configuration file" in
   Arg.(value & opt (some file) None & info ["config"; "c"] ~docv:"FILE" ~doc)
+
+let exclude_tests_arg =
+  let doc = "Exclude tests by name (can be specified multiple times)" in
+  Arg.(value & opt_all string [] & info ["exclude-test"; "exclude"] ~docv:"TEST_NAME" ~doc)
 
 (* Main run command *)
 let run_cmd =
@@ -49,13 +57,16 @@ let run_cmd =
     `P "";
     `P "Show available capabilities:";
     `P "  $(b,ccl-simple-test) --show-capabilities";
+    `P "";
+    `P "Exclude specific tests by name:";
+    `P "  $(b,ccl-simple-test) --exclude-test \"test_name_1\" --exclude-test \"test_name_2\" tests/";
     `S Manpage.s_bugs;
     `P "Report bugs at https://github.com/chshersh/ccl/issues";
   ] in
   let info = Cmd.info "ccl-simple-test" ~version:"0.1.0" ~doc ~man in
-  Cmd.v info 
-    Term.(const Simple_test_runner.main $ test_files_arg $ capabilities_arg $ 
-          verbose_arg $ no_color_arg $ show_capabilities_arg $ config_file_arg)
+  Cmd.v info
+    Term.(const Simple_test_runner.main $ test_files_arg $ capabilities_arg $
+          verbose_arg $ no_color_arg $ show_capabilities_arg $ config_file_arg $ exclude_tests_arg $ show_exclusions_arg)
 
 (* Capabilities command - standalone utility *)
 let capabilities_cmd =
