@@ -36,6 +36,7 @@ let bug_003_error_handling = [
   "just_key_error_parse";
   "just_string_error_parse";
   "multiline_plain_error_parse";
+  "multiline_plain_nested_error_parse";
 ]
 
 (* BUG-004: Pretty-Print Round-Trip Identity *)
