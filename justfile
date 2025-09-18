@@ -5,6 +5,21 @@
 default:
     @just --list
 
+# Initialize dependencies (run once for new setup)
+deps:
+    @echo "🔧 Initializing OCaml dependencies..."
+    @echo "📦 Creating opam switch..."
+    opam switch create . --deps-only -y
+    @echo "📚 Installing project dependencies..."
+    opam install . --deps-only -y
+    @echo "🛠️ Installing additional dev dependencies..."
+    opam install utop ocamlformat ocaml-lsp-server -y
+    @echo "✅ Dependencies initialized successfully!"
+    @echo ""
+    @echo "Next steps:"
+    @echo "  just build           # Build the project"
+    @echo "  just test-smart      # Run tests"
+
 # Build the test suite
 build:
     opam exec -- dune build
@@ -122,6 +137,9 @@ generate INPUT OUTPUT:
 help:
     @echo "OCaml CCL JSON Test Suite"
     @echo "========================="
+    @echo ""
+    @echo "Setup (run once):"
+    @echo "  just deps            # Initialize opam switch and install dependencies"
     @echo ""
     @echo "Quick start:"
     @echo "  just test-smart      # Recommended: smart tests with feature skipping"
