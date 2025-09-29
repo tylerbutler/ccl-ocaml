@@ -2,12 +2,11 @@
 type json <ocaml module="Yojson.Basic" t="t"> = abstract
 type int64 = int <ocaml repr="int64">
 
-type test_caseValidation = [
+type cCLTestFlatFormatTestsValidation = [
   | Parse <json name="parse">
   | Parse_value <json name="parse_value">
   | Filter <json name="filter">
   | Compose <json name="compose">
-  | Expand_dotted <json name="expand_dotted">
   | Build_hierarchy <json name="build_hierarchy">
   | Get_string <json name="get_string">
   | Get_int <json name="get_int">
@@ -17,15 +16,14 @@ type test_caseValidation = [
   | Canonical_format <json name="canonical_format">
   | Load <json name="load">
   | Round_trip <json name="round_trip">
-  | Associativity <json name="associativity">
+  | Merge <json name="merge">
 ] <doc text="Single CCL function to validate">
 
-type test_caseFunctions = [
+type cCLTestFlatFormatTestsFunctions = [
   | Parse <json name="parse">
   | Parse_value <json name="parse_value">
   | Filter <json name="filter">
   | Compose <json name="compose">
-  | Expand_dotted <json name="expand_dotted">
   | Build_hierarchy <json name="build_hierarchy">
   | Get_string <json name="get_string">
   | Get_int <json name="get_int">
@@ -35,10 +33,10 @@ type test_caseFunctions = [
   | Canonical_format <json name="canonical_format">
   | Load <json name="load">
   | Round_trip <json name="round_trip">
-  | Associativity <json name="associativity">
+  | Merge <json name="merge">
 ] 
 
-type test_caseBehaviors = [
+type cCLTestFlatFormatTestsBehaviors = [
   | Boolean_strict <json name="boolean_strict">
   | Boolean_lenient <json name="boolean_lenient">
   | Crlf_preserve_literal <json name="crlf_preserve_literal">
@@ -51,48 +49,38 @@ type test_caseBehaviors = [
   | List_coercion_disabled <json name="list_coercion_disabled">
 ] 
 
-type test_caseVariants = [
+type cCLTestFlatFormatTestsVariants = [
   | Proposed_behavior <json name="proposed_behavior">
   | Reference_compliant <json name="reference_compliant">
 ] 
 
-type test_caseFeatures = [
-  | Comments <json name="comments">
-  | Empty_keys <json name="empty_keys">
-  | Experimental_dotted_keys <json name="experimental_dotted_keys">
-  | Multiline <json name="multiline">
-  | Unicode <json name="unicode">
-  | Whitespace <json name="whitespace">
-] 
-
-type test_caseConflicts = {
+type cCLTestFlatFormatTestsConflicts = {
   ?functions : string list option;
   ?behaviors : string list option;
   ?variants : string list option;
   ?features : string list option;
 } <doc text="Mutually exclusive options by category">
 
-type test_case = {
+type cCLTestFlatFormatTests = {
   name <doc text="Unique test name (source_name + validation function)">: string;
   input <doc text="CCL input text to be tested">: string;
-  validation <doc text="Single CCL function to validate">: test_caseValidation;
+  validation <doc text="Single CCL function to validate">: cCLTestFlatFormatTestsValidation;
   expected <doc text="Expected test results with flexible structure">: json;
   ?args <doc text="Arguments for typed access functions (get_string, get_int, get_bool, get_float, get_list). Required for these functions, omitted for others.">: string list option;
-  ?functions <doc text="CCL functions tested by this test">: test_caseFunctions list option;
-  behaviors <doc text="Implementation behavior choices">: test_caseBehaviors list;
-  variants <doc text="Specification variants">: test_caseVariants list;
-  features <doc text="Required language features">: test_caseFeatures list;
-  ?conflicts <doc text="Mutually exclusive options by category">: test_caseConflicts option;
+  ?functions <doc text="CCL functions tested by this test">: cCLTestFlatFormatTestsFunctions list option;
+  behaviors <doc text="Implementation behavior choices">: cCLTestFlatFormatTestsBehaviors list;
+  variants <doc text="Specification variants">: cCLTestFlatFormatTestsVariants list;
+  features <doc text="Required language features">: string list;
+  ?conflicts <doc text="Mutually exclusive options by category">: cCLTestFlatFormatTestsConflicts option;
   ?requires <doc text="Functions that must be implemented as prerequisites">: string list option;
-  ?level <doc text="CCL implementation level (1-5)">: int option;
   ?source_test <doc text="Original source test name for traceability">: string option;
   ~expect_error <doc text="Whether this test should produce an error"> <ocaml default="false">: bool;
   ?error_type <doc text="Expected error type for error tests">: string option;
 } 
 
-type test_suite = {
+type cCLTestFlatFormat = {
   schema <json name="$schema"> <doc text="JSON Schema reference">: string;
-  tests : test_case list;
-} <doc text="Schema for existing generated flat test files (star-flat.json)">
+  tests : cCLTestFlatFormatTests list;
+} <doc text="Schema for existing generated flat test files">
 
-type root = test_case list
+type root = cCLTestFlatFormatTests list

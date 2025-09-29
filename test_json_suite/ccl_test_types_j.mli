@@ -1,182 +1,66 @@
 (* Auto-generated from "ccl_test_types.atd" *)
 [@@@ocaml.warning "-27-32-33-35-39"]
 
-type test_caseVariants = Ccl_test_types_t.test_caseVariants
+type json = Yojson.Basic.t
+
+type cCLTestFlatFormatTestsVariants =
+  Ccl_test_types_t.cCLTestFlatFormatTestsVariants
 
 (** Single CCL function to validate *)
-type test_caseValidation = Ccl_test_types_t.test_caseValidation
+type cCLTestFlatFormatTestsValidation =
+  Ccl_test_types_t.cCLTestFlatFormatTestsValidation
 
-type test_caseFunctions = Ccl_test_types_t.test_caseFunctions
-
-type test_caseFeatures = Ccl_test_types_t.test_caseFeatures
+type cCLTestFlatFormatTestsFunctions =
+  Ccl_test_types_t.cCLTestFlatFormatTestsFunctions
 
 (** Mutually exclusive options by category *)
-type test_caseConflicts = Ccl_test_types_t.test_caseConflicts = {
+type cCLTestFlatFormatTestsConflicts =
+  Ccl_test_types_t.cCLTestFlatFormatTestsConflicts = {
   functions: string list option;
   behaviors: string list option;
   variants: string list option;
   features: string list option
 }
 
-type test_caseBehaviors = Ccl_test_types_t.test_caseBehaviors
+type cCLTestFlatFormatTestsBehaviors =
+  Ccl_test_types_t.cCLTestFlatFormatTestsBehaviors
 
-type json = Yojson.Basic.t
-
-type test_case = Ccl_test_types_t.test_case = {
+type cCLTestFlatFormatTests = Ccl_test_types_t.cCLTestFlatFormatTests = {
   name: string (** Unique test name (source_name + validation function) *);
   input: string (** CCL input text to be tested *);
-  validation: test_caseValidation (** Single CCL function to validate *);
+  validation: cCLTestFlatFormatTestsValidation
+    (** Single CCL function to validate *);
   expected: json (** Expected test results with flexible structure *);
   args: string list option
     (**
       Arguments for typed access functions (get_string, get_int, get_bool,
       get_float, get_list). Required for these functions, omitted for others.
     *);
-  functions: test_caseFunctions list option
+  functions: cCLTestFlatFormatTestsFunctions list option
     (** CCL functions tested by this test *);
-  behaviors: test_caseBehaviors list (** Implementation behavior choices *);
-  variants: test_caseVariants list (** Specification variants *);
-  features: test_caseFeatures list (** Required language features *);
-  conflicts: test_caseConflicts option
+  behaviors: cCLTestFlatFormatTestsBehaviors list
+    (** Implementation behavior choices *);
+  variants: cCLTestFlatFormatTestsVariants list (** Specification variants *);
+  features: string list (** Required language features *);
+  conflicts: cCLTestFlatFormatTestsConflicts option
     (** Mutually exclusive options by category *);
   requires: string list option
     (** Functions that must be implemented as prerequisites *);
-  level: int option (** CCL implementation level (1-5) *);
   source_test: string option
     (** Original source test name for traceability *);
   expect_error: bool (** Whether this test should produce an error *);
   error_type: string option (** Expected error type for error tests *)
 }
 
-(** Schema for existing generated flat test files (star-flat.json) *)
-type test_suite = Ccl_test_types_t.test_suite = {
-  schema: string (** JSON Schema reference *);
-  tests: test_case list
-}
-
 type root = Ccl_test_types_t.root
 
 type int64 = Ccl_test_types_t.int64
 
-val write_test_caseVariants :
-  Buffer.t -> test_caseVariants -> unit
-  (** Output a JSON value of type {!type:test_caseVariants}. *)
-
-val string_of_test_caseVariants :
-  ?len:int -> test_caseVariants -> string
-  (** Serialize a value of type {!type:test_caseVariants}
-      into a JSON string.
-      @param len specifies the initial length
-                 of the buffer used internally.
-                 Default: 1024. *)
-
-val read_test_caseVariants :
-  Yojson.Safe.lexer_state -> Lexing.lexbuf -> test_caseVariants
-  (** Input JSON data of type {!type:test_caseVariants}. *)
-
-val test_caseVariants_of_string :
-  string -> test_caseVariants
-  (** Deserialize JSON data of type {!type:test_caseVariants}. *)
-
-val write_test_caseValidation :
-  Buffer.t -> test_caseValidation -> unit
-  (** Output a JSON value of type {!type:test_caseValidation}. *)
-
-val string_of_test_caseValidation :
-  ?len:int -> test_caseValidation -> string
-  (** Serialize a value of type {!type:test_caseValidation}
-      into a JSON string.
-      @param len specifies the initial length
-                 of the buffer used internally.
-                 Default: 1024. *)
-
-val read_test_caseValidation :
-  Yojson.Safe.lexer_state -> Lexing.lexbuf -> test_caseValidation
-  (** Input JSON data of type {!type:test_caseValidation}. *)
-
-val test_caseValidation_of_string :
-  string -> test_caseValidation
-  (** Deserialize JSON data of type {!type:test_caseValidation}. *)
-
-val write_test_caseFunctions :
-  Buffer.t -> test_caseFunctions -> unit
-  (** Output a JSON value of type {!type:test_caseFunctions}. *)
-
-val string_of_test_caseFunctions :
-  ?len:int -> test_caseFunctions -> string
-  (** Serialize a value of type {!type:test_caseFunctions}
-      into a JSON string.
-      @param len specifies the initial length
-                 of the buffer used internally.
-                 Default: 1024. *)
-
-val read_test_caseFunctions :
-  Yojson.Safe.lexer_state -> Lexing.lexbuf -> test_caseFunctions
-  (** Input JSON data of type {!type:test_caseFunctions}. *)
-
-val test_caseFunctions_of_string :
-  string -> test_caseFunctions
-  (** Deserialize JSON data of type {!type:test_caseFunctions}. *)
-
-val write_test_caseFeatures :
-  Buffer.t -> test_caseFeatures -> unit
-  (** Output a JSON value of type {!type:test_caseFeatures}. *)
-
-val string_of_test_caseFeatures :
-  ?len:int -> test_caseFeatures -> string
-  (** Serialize a value of type {!type:test_caseFeatures}
-      into a JSON string.
-      @param len specifies the initial length
-                 of the buffer used internally.
-                 Default: 1024. *)
-
-val read_test_caseFeatures :
-  Yojson.Safe.lexer_state -> Lexing.lexbuf -> test_caseFeatures
-  (** Input JSON data of type {!type:test_caseFeatures}. *)
-
-val test_caseFeatures_of_string :
-  string -> test_caseFeatures
-  (** Deserialize JSON data of type {!type:test_caseFeatures}. *)
-
-val write_test_caseConflicts :
-  Buffer.t -> test_caseConflicts -> unit
-  (** Output a JSON value of type {!type:test_caseConflicts}. *)
-
-val string_of_test_caseConflicts :
-  ?len:int -> test_caseConflicts -> string
-  (** Serialize a value of type {!type:test_caseConflicts}
-      into a JSON string.
-      @param len specifies the initial length
-                 of the buffer used internally.
-                 Default: 1024. *)
-
-val read_test_caseConflicts :
-  Yojson.Safe.lexer_state -> Lexing.lexbuf -> test_caseConflicts
-  (** Input JSON data of type {!type:test_caseConflicts}. *)
-
-val test_caseConflicts_of_string :
-  string -> test_caseConflicts
-  (** Deserialize JSON data of type {!type:test_caseConflicts}. *)
-
-val write_test_caseBehaviors :
-  Buffer.t -> test_caseBehaviors -> unit
-  (** Output a JSON value of type {!type:test_caseBehaviors}. *)
-
-val string_of_test_caseBehaviors :
-  ?len:int -> test_caseBehaviors -> string
-  (** Serialize a value of type {!type:test_caseBehaviors}
-      into a JSON string.
-      @param len specifies the initial length
-                 of the buffer used internally.
-                 Default: 1024. *)
-
-val read_test_caseBehaviors :
-  Yojson.Safe.lexer_state -> Lexing.lexbuf -> test_caseBehaviors
-  (** Input JSON data of type {!type:test_caseBehaviors}. *)
-
-val test_caseBehaviors_of_string :
-  string -> test_caseBehaviors
-  (** Deserialize JSON data of type {!type:test_caseBehaviors}. *)
+(** Schema for existing generated flat test files *)
+type cCLTestFlatFormat = Ccl_test_types_t.cCLTestFlatFormat = {
+  schema: string (** JSON Schema reference *);
+  tests: cCLTestFlatFormatTests list
+}
 
 val write_json :
   Buffer.t -> json -> unit
@@ -198,45 +82,125 @@ val json_of_string :
   string -> json
   (** Deserialize JSON data of type {!type:json}. *)
 
-val write_test_case :
-  Buffer.t -> test_case -> unit
-  (** Output a JSON value of type {!type:test_case}. *)
+val write_cCLTestFlatFormatTestsVariants :
+  Buffer.t -> cCLTestFlatFormatTestsVariants -> unit
+  (** Output a JSON value of type {!type:cCLTestFlatFormatTestsVariants}. *)
 
-val string_of_test_case :
-  ?len:int -> test_case -> string
-  (** Serialize a value of type {!type:test_case}
+val string_of_cCLTestFlatFormatTestsVariants :
+  ?len:int -> cCLTestFlatFormatTestsVariants -> string
+  (** Serialize a value of type {!type:cCLTestFlatFormatTestsVariants}
       into a JSON string.
       @param len specifies the initial length
                  of the buffer used internally.
                  Default: 1024. *)
 
-val read_test_case :
-  Yojson.Safe.lexer_state -> Lexing.lexbuf -> test_case
-  (** Input JSON data of type {!type:test_case}. *)
+val read_cCLTestFlatFormatTestsVariants :
+  Yojson.Safe.lexer_state -> Lexing.lexbuf -> cCLTestFlatFormatTestsVariants
+  (** Input JSON data of type {!type:cCLTestFlatFormatTestsVariants}. *)
 
-val test_case_of_string :
-  string -> test_case
-  (** Deserialize JSON data of type {!type:test_case}. *)
+val cCLTestFlatFormatTestsVariants_of_string :
+  string -> cCLTestFlatFormatTestsVariants
+  (** Deserialize JSON data of type {!type:cCLTestFlatFormatTestsVariants}. *)
 
-val write_test_suite :
-  Buffer.t -> test_suite -> unit
-  (** Output a JSON value of type {!type:test_suite}. *)
+val write_cCLTestFlatFormatTestsValidation :
+  Buffer.t -> cCLTestFlatFormatTestsValidation -> unit
+  (** Output a JSON value of type {!type:cCLTestFlatFormatTestsValidation}. *)
 
-val string_of_test_suite :
-  ?len:int -> test_suite -> string
-  (** Serialize a value of type {!type:test_suite}
+val string_of_cCLTestFlatFormatTestsValidation :
+  ?len:int -> cCLTestFlatFormatTestsValidation -> string
+  (** Serialize a value of type {!type:cCLTestFlatFormatTestsValidation}
       into a JSON string.
       @param len specifies the initial length
                  of the buffer used internally.
                  Default: 1024. *)
 
-val read_test_suite :
-  Yojson.Safe.lexer_state -> Lexing.lexbuf -> test_suite
-  (** Input JSON data of type {!type:test_suite}. *)
+val read_cCLTestFlatFormatTestsValidation :
+  Yojson.Safe.lexer_state -> Lexing.lexbuf -> cCLTestFlatFormatTestsValidation
+  (** Input JSON data of type {!type:cCLTestFlatFormatTestsValidation}. *)
 
-val test_suite_of_string :
-  string -> test_suite
-  (** Deserialize JSON data of type {!type:test_suite}. *)
+val cCLTestFlatFormatTestsValidation_of_string :
+  string -> cCLTestFlatFormatTestsValidation
+  (** Deserialize JSON data of type {!type:cCLTestFlatFormatTestsValidation}. *)
+
+val write_cCLTestFlatFormatTestsFunctions :
+  Buffer.t -> cCLTestFlatFormatTestsFunctions -> unit
+  (** Output a JSON value of type {!type:cCLTestFlatFormatTestsFunctions}. *)
+
+val string_of_cCLTestFlatFormatTestsFunctions :
+  ?len:int -> cCLTestFlatFormatTestsFunctions -> string
+  (** Serialize a value of type {!type:cCLTestFlatFormatTestsFunctions}
+      into a JSON string.
+      @param len specifies the initial length
+                 of the buffer used internally.
+                 Default: 1024. *)
+
+val read_cCLTestFlatFormatTestsFunctions :
+  Yojson.Safe.lexer_state -> Lexing.lexbuf -> cCLTestFlatFormatTestsFunctions
+  (** Input JSON data of type {!type:cCLTestFlatFormatTestsFunctions}. *)
+
+val cCLTestFlatFormatTestsFunctions_of_string :
+  string -> cCLTestFlatFormatTestsFunctions
+  (** Deserialize JSON data of type {!type:cCLTestFlatFormatTestsFunctions}. *)
+
+val write_cCLTestFlatFormatTestsConflicts :
+  Buffer.t -> cCLTestFlatFormatTestsConflicts -> unit
+  (** Output a JSON value of type {!type:cCLTestFlatFormatTestsConflicts}. *)
+
+val string_of_cCLTestFlatFormatTestsConflicts :
+  ?len:int -> cCLTestFlatFormatTestsConflicts -> string
+  (** Serialize a value of type {!type:cCLTestFlatFormatTestsConflicts}
+      into a JSON string.
+      @param len specifies the initial length
+                 of the buffer used internally.
+                 Default: 1024. *)
+
+val read_cCLTestFlatFormatTestsConflicts :
+  Yojson.Safe.lexer_state -> Lexing.lexbuf -> cCLTestFlatFormatTestsConflicts
+  (** Input JSON data of type {!type:cCLTestFlatFormatTestsConflicts}. *)
+
+val cCLTestFlatFormatTestsConflicts_of_string :
+  string -> cCLTestFlatFormatTestsConflicts
+  (** Deserialize JSON data of type {!type:cCLTestFlatFormatTestsConflicts}. *)
+
+val write_cCLTestFlatFormatTestsBehaviors :
+  Buffer.t -> cCLTestFlatFormatTestsBehaviors -> unit
+  (** Output a JSON value of type {!type:cCLTestFlatFormatTestsBehaviors}. *)
+
+val string_of_cCLTestFlatFormatTestsBehaviors :
+  ?len:int -> cCLTestFlatFormatTestsBehaviors -> string
+  (** Serialize a value of type {!type:cCLTestFlatFormatTestsBehaviors}
+      into a JSON string.
+      @param len specifies the initial length
+                 of the buffer used internally.
+                 Default: 1024. *)
+
+val read_cCLTestFlatFormatTestsBehaviors :
+  Yojson.Safe.lexer_state -> Lexing.lexbuf -> cCLTestFlatFormatTestsBehaviors
+  (** Input JSON data of type {!type:cCLTestFlatFormatTestsBehaviors}. *)
+
+val cCLTestFlatFormatTestsBehaviors_of_string :
+  string -> cCLTestFlatFormatTestsBehaviors
+  (** Deserialize JSON data of type {!type:cCLTestFlatFormatTestsBehaviors}. *)
+
+val write_cCLTestFlatFormatTests :
+  Buffer.t -> cCLTestFlatFormatTests -> unit
+  (** Output a JSON value of type {!type:cCLTestFlatFormatTests}. *)
+
+val string_of_cCLTestFlatFormatTests :
+  ?len:int -> cCLTestFlatFormatTests -> string
+  (** Serialize a value of type {!type:cCLTestFlatFormatTests}
+      into a JSON string.
+      @param len specifies the initial length
+                 of the buffer used internally.
+                 Default: 1024. *)
+
+val read_cCLTestFlatFormatTests :
+  Yojson.Safe.lexer_state -> Lexing.lexbuf -> cCLTestFlatFormatTests
+  (** Input JSON data of type {!type:cCLTestFlatFormatTests}. *)
+
+val cCLTestFlatFormatTests_of_string :
+  string -> cCLTestFlatFormatTests
+  (** Deserialize JSON data of type {!type:cCLTestFlatFormatTests}. *)
 
 val write_root :
   Buffer.t -> root -> unit
@@ -277,4 +241,24 @@ val read_int64 :
 val int64_of_string :
   string -> int64
   (** Deserialize JSON data of type {!type:int64}. *)
+
+val write_cCLTestFlatFormat :
+  Buffer.t -> cCLTestFlatFormat -> unit
+  (** Output a JSON value of type {!type:cCLTestFlatFormat}. *)
+
+val string_of_cCLTestFlatFormat :
+  ?len:int -> cCLTestFlatFormat -> string
+  (** Serialize a value of type {!type:cCLTestFlatFormat}
+      into a JSON string.
+      @param len specifies the initial length
+                 of the buffer used internally.
+                 Default: 1024. *)
+
+val read_cCLTestFlatFormat :
+  Yojson.Safe.lexer_state -> Lexing.lexbuf -> cCLTestFlatFormat
+  (** Input JSON data of type {!type:cCLTestFlatFormat}. *)
+
+val cCLTestFlatFormat_of_string :
+  string -> cCLTestFlatFormat
+  (** Deserialize JSON data of type {!type:cCLTestFlatFormat}. *)
 
