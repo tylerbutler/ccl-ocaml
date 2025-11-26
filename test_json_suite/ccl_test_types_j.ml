@@ -154,6 +154,10 @@ let read_cCLTestFlatFormatTestsValidation = (
               Yojson.Safe.read_space p lb;
               Yojson.Safe.read_gt p lb;
               `Parse_value
+            | "parse_indented" ->
+              Yojson.Safe.read_space p lb;
+              Yojson.Safe.read_gt p lb;
+              `Parse_value
             | "filter" ->
               Yojson.Safe.read_space p lb;
               Yojson.Safe.read_gt p lb;
@@ -210,6 +214,8 @@ let read_cCLTestFlatFormatTestsValidation = (
             | "parse" ->
               `Parse
             | "parse_value" ->
+              `Parse_value
+            | "parse_indented" ->
               `Parse_value
             | "filter" ->
               `Filter
@@ -282,6 +288,10 @@ let read_cCLTestFlatFormatTestsFunctions = (
               Yojson.Safe.read_space p lb;
               Yojson.Safe.read_gt p lb;
               `Parse_value
+            | "parse_indented" ->
+              Yojson.Safe.read_space p lb;
+              Yojson.Safe.read_gt p lb;
+              `Parse_value
             | "filter" ->
               Yojson.Safe.read_space p lb;
               Yojson.Safe.read_gt p lb;
@@ -338,6 +348,8 @@ let read_cCLTestFlatFormatTestsFunctions = (
             | "parse" ->
               `Parse
             | "parse_value" ->
+              `Parse_value
+            | "parse_indented" ->
               `Parse_value
             | "filter" ->
               `Filter

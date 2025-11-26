@@ -6,10 +6,106 @@ open Test_capabilities
 open Test_output
 
 (* Test result types - simplified from the implementation guide *)
-type test_result = 
+type test_result =
   | Passed
-  | Failed of string  
+  | Failed of string
   | Skipped of string
+
+(* Convert CCL Model.t to Yojson.Basic.t for comparison with expected values *)
+let rec model_to_json (Ccl.Model.Fix map) : Yojson.Basic.t =
+  let entries = Ccl.Model.KeyMap.fold (fun key value acc ->
+    let json_value = match value with
+      | Ccl.Model.Fix inner_map when Ccl.Model.KeyMap.is_empty inner_map ->
+          (* Empty map represents empty string *)
+          `String ""
+      | Ccl.Model.Fix inner_map when Ccl.Model.KeyMap.cardinal inner_map = 1 ->
+          (* Single entry - could be a string value or nested object *)
+          let (inner_key, inner_val) = Ccl.Model.KeyMap.choose inner_map in
+          (match inner_val with
+           | Ccl.Model.Fix m when Ccl.Model.KeyMap.is_empty m ->
+               (* Leaf value: the key is the string value *)
+               `String inner_key
+           | _ ->
+               (* Has nested content, recurse *)
+               model_to_json value)
+      | _ ->
+          (* Multiple entries - this is either a list or nested object *)
+          let inner_map = match value with Ccl.Model.Fix m -> m in
+          (* Check if all values are leaf nodes (representing a list) *)
+          let all_leaves = Ccl.Model.KeyMap.for_all (fun _ v ->
+            match v with
+            | Ccl.Model.Fix m -> Ccl.Model.KeyMap.is_empty m
+          ) inner_map in
+          if all_leaves then
+            (* It's a list - collect all keys as list elements *)
+            let items = Ccl.Model.KeyMap.fold (fun k _ acc -> `String k :: acc) inner_map [] in
+            `List (List.rev items)
+          else
+            (* It's a nested object *)
+            model_to_json value
+    in
+    (key, json_value) :: acc
+  ) map [] in
+  `Assoc (List.rev entries)
+
+(* Compare two JSON values for equality, with helpful diff message *)
+let json_equal_with_diff (expected : Yojson.Basic.t) (actual : Yojson.Basic.t) : (unit, string) result =
+  if Yojson.Basic.equal expected actual then
+    Ok ()
+  else
+    Error (Printf.sprintf "Expected: %s\nGot: %s"
+      (Yojson.Basic.pretty_to_string expected)
+      (Yojson.Basic.pretty_to_string actual))
+
+(* Extract the 'object' field from expected JSON for build_hierarchy tests *)
+let extract_expected_object (expected : Yojson.Basic.t) : Yojson.Basic.t option =
+  match expected with
+  | `Assoc fields ->
+      (match List.assoc_opt "object" fields with
+       | Some obj -> Some obj
+       | None -> None)
+  | _ -> None
+
+(* Extract the 'list' field from expected JSON for get_list tests *)
+let extract_expected_list (expected : Yojson.Basic.t) : string list option =
+  match expected with
+  | `Assoc fields ->
+      (match List.assoc_opt "list" fields with
+       | Some (`List items) ->
+           Some (List.filter_map (function `String s -> Some s | _ -> None) items)
+       | Some `Null -> Some []  (* null means empty/not found *)
+       | None ->
+           (* Check if count is 0, meaning null/not found expected *)
+           (match List.assoc_opt "count" fields with
+            | Some (`Int 0) -> None  (* count: 0 means expect null *)
+            | _ -> None)
+       | _ -> None)
+  | _ -> None
+
+(* Check if expected indicates null result (count: 0 with no list field) *)
+let expects_null (expected : Yojson.Basic.t) : bool =
+  match expected with
+  | `Assoc fields ->
+      (match List.assoc_opt "count" fields, List.assoc_opt "list" fields with
+       | Some (`Int 0), None -> true
+       | _ -> false)
+  | _ -> false
+
+(* Extract the 'value' field from expected JSON for get_string tests *)
+let extract_expected_string (expected : Yojson.Basic.t) : string option option =
+  (* Returns Some (Some str) for expected string, Some None for expected null, None for missing field *)
+  match expected with
+  | `Assoc fields ->
+      (match List.assoc_opt "value" fields with
+       | Some (`String s) -> Some (Some s)
+       | Some `Null -> Some None
+       | None ->
+           (* Check count field *)
+           (match List.assoc_opt "count" fields with
+            | Some (`Int 0) -> Some None  (* count: 0 means expect null *)
+            | _ -> None)
+       | _ -> None)
+  | _ -> None
 
 type test_summary = {
   total: int;
@@ -51,11 +147,21 @@ let execute_single_validation (test_case : cCLTestFlatFormatTests) =
              let _unused_expected = test_case.expected in
              Passed
          | Error (`Parse_error msg) -> Failed ("Parse_value error: " ^ msg))
-    
+
     | `Build_hierarchy ->
-        (* Call Ccl.decode (which does Parser.parse |> Model.fix) *)
+        (* Call Ccl.decode (which does Parser.parse |> Model.fix) and validate result *)
         (match Ccl.decode test_case.input with
-         | Ok _model -> Passed  (* Successfully built hierarchy *)
+         | Ok model ->
+             (* Convert model to JSON and compare with expected *)
+             let actual_json = model_to_json model in
+             (match extract_expected_object test_case.expected with
+              | Some expected_obj ->
+                  (match json_equal_with_diff expected_obj actual_json with
+                   | Ok () -> Passed
+                   | Error diff -> Failed ("Build_hierarchy mismatch:\n" ^ diff))
+              | None ->
+                  (* No expected object specified, just check parsing succeeded *)
+                  Passed)
          | Error (`Parse_error msg) -> Failed ("Build_hierarchy error: " ^ msg))
     
     | `Canonical_format ->
@@ -78,7 +184,7 @@ let execute_single_validation (test_case : cCLTestFlatFormatTests) =
          | Error (`Parse_error msg) -> Failed ("Canonical_format error: " ^ msg))
     
     | `Get_string ->
-        (* Call Ccl.decode then Model.get_string *)
+        (* Call Ccl.decode then Model.get_string and validate result *)
         (match Ccl.decode test_case.input with
          | Ok model ->
              (* Determine which key to query *)
@@ -86,7 +192,6 @@ let execute_single_validation (test_case : cCLTestFlatFormatTests) =
                | Some (key :: _) -> key  (* Use first arg as key *)
                | Some [] | None ->
                    (* No args provided, try to infer from input *)
-                   (* For simple "key = value" inputs, extract the key *)
                    (match String.split_on_char '=' test_case.input with
                     | key :: _ -> String.trim key
                     | [] -> "")
@@ -96,18 +201,9 @@ let execute_single_validation (test_case : cCLTestFlatFormatTests) =
              let actual_result = Ccl.Model.get_string model key_to_query in
 
              (* Check against expected value *)
-             let _unused_expected = test_case.expected in
-             (match None with
-              | Some expected_json ->
-                  (* Convert expected JSON value to string *)
-                  let expected_str = match expected_json with
-                    | `String s -> s
-                    | `Int i -> string_of_int i
-                    | `Float f -> string_of_float f
-                    | `Bool true -> "true"
-                    | `Bool false -> "false"
-                    | _ -> Yojson.Basic.to_string expected_json
-                  in
+             (match extract_expected_string test_case.expected with
+              | Some (Some expected_str) ->
+                  (* Expected a specific string value *)
                   (match actual_result with
                    | Some actual_str when actual_str = expected_str -> Passed
                    | Some actual_str ->
@@ -116,11 +212,18 @@ let execute_single_validation (test_case : cCLTestFlatFormatTests) =
                    | None ->
                        Failed (Printf.sprintf "Key '%s' not found, expected '%s'"
                                key_to_query expected_str))
-              | None ->
-                  (* No expected value specified, just check if we can call the function *)
+              | Some None ->
+                  (* Expected null/not found *)
                   (match actual_result with
-                   | Some _ -> Passed  (* Successfully retrieved a value *)
-                   | None -> Failed (Printf.sprintf "Key '%s' not found" key_to_query)))
+                   | None -> Passed
+                   | Some actual_str ->
+                       Failed (Printf.sprintf "Expected null, got '%s' for key '%s'"
+                               actual_str key_to_query))
+              | None ->
+                  (* No expected value specified, just check function call succeeded *)
+                  (match actual_result with
+                   | Some _ -> Passed
+                   | None -> Passed))  (* Both outcomes acceptable when no expectation *)
          | Error (`Parse_error msg) -> Failed ("Get_string error: " ^ msg))
 
     | `Filter ->
@@ -182,38 +285,75 @@ let execute_single_validation (test_case : cCLTestFlatFormatTests) =
     | `Get_bool -> Skipped "Function get_bool not implemented"
     | `Get_float -> Skipped "Function get_float not implemented"
     | `Get_list ->
-        (* Call Ccl.decode then Model.get_list *)
+        (* Call Ccl.decode then traverse path and get_list at final key *)
         (match Ccl.decode test_case.input with
          | Ok model ->
-             (* Determine which key to query *)
-             let key_to_query = match test_case.args with
-               | Some (key :: _) -> key  (* Use first arg as key *)
-               | Some [] | None ->
-                   (* No args provided, try to infer from input *)
-                   (* For simple "key = value1\nkey = value2" inputs, extract the key *)
-                   (match String.split_on_char '=' test_case.input with
-                    | key :: _ -> String.trim key
-                    | [] -> "")
+             (* Get the path components from args *)
+             let path_components = match test_case.args with
+               | Some args -> args
+               | None -> []
              in
 
-             (* Call get_list with the determined key *)
-             let actual_result = Ccl.Model.get_list model key_to_query in
+             (* Traverse the path to get to the right location *)
+             let rec traverse_path current_model = function
+               | [] ->
+                   (* No path components - get all keys at root as list *)
+                   let (Ccl.Model.Fix map) = current_model in
+                   Ccl.Model.KeyMap.fold (fun key _value acc -> key :: acc) map []
+                   |> List.rev
+               | [final_key] ->
+                   (* Last component - get list at this key *)
+                   (* First check if there's an empty-string key (bare list) *)
+                   let (Ccl.Model.Fix map) = current_model in
+                   (match Ccl.Model.KeyMap.find_opt final_key map with
+                    | Some (Ccl.Model.Fix inner_map) ->
+                        (* Check for empty-string key (bare list representation) *)
+                        (match Ccl.Model.KeyMap.find_opt "" inner_map with
+                         | Some (Ccl.Model.Fix list_map) ->
+                             (* Bare list - get all keys from the empty-string entry *)
+                             Ccl.Model.KeyMap.fold (fun key _value acc -> key :: acc) list_map []
+                             |> List.rev
+                         | None ->
+                             (* Regular list - get all leaf keys *)
+                             let items = Ccl.Model.KeyMap.fold (fun key value acc ->
+                               match value with
+                               | Ccl.Model.Fix m when Ccl.Model.KeyMap.is_empty m -> key :: acc
+                               | _ -> acc
+                             ) inner_map [] in
+                             List.rev items)
+                    | None -> [])  (* Key not found *)
+               | key :: rest ->
+                   (* Intermediate component - descend into nested object *)
+                   let (Ccl.Model.Fix map) = current_model in
+                   (match Ccl.Model.KeyMap.find_opt key map with
+                    | Some nested_model -> traverse_path nested_model rest
+                    | None -> [])  (* Path not found *)
+             in
 
-             (* Check against expected list *)
-             let _unused_expected = test_case.expected in
-             (match None with
-              | Some expected_list ->
-                  (* Compare the actual list with expected list *)
-                  if actual_result = expected_list then
-                    Passed
-                  else
-                    Failed (Printf.sprintf "Expected list [%s], got [%s] for key '%s'"
-                            (String.concat "; " expected_list)
-                            (String.concat "; " actual_result)
-                            key_to_query)
-              | None ->
-                  (* No expected list specified, just check if we can call the function *)
-                  Passed  (* Successfully called get_list function *))
+             let actual_result = traverse_path model path_components in
+             let path_str = String.concat "." path_components in
+
+             (* Check against expected - handle null expectation (count: 0) *)
+             if expects_null test_case.expected then
+               (* Expected null/not found - returns empty list for not found *)
+               if actual_result = [] then
+                 Passed
+               else
+                 Failed (Printf.sprintf "Expected null, got [%s] for path '%s'"
+                         (String.concat "; " actual_result) path_str)
+             else
+               (match extract_expected_list test_case.expected with
+                | Some expected_list ->
+                    if actual_result = expected_list then
+                      Passed
+                    else
+                      Failed (Printf.sprintf "Expected list [%s], got [%s] for path '%s'"
+                              (String.concat "; " expected_list)
+                              (String.concat "; " actual_result)
+                              path_str)
+                | None ->
+                    (* No expected list specified, just check function call succeeded *)
+                    Passed)
          | Error (`Parse_error msg) -> Failed ("Get_list error: " ^ msg))
     | `Load -> Skipped "Function load not implemented"
     
@@ -244,6 +384,29 @@ let check_test_case_variants (test_case : cCLTestFlatFormatTests) =
   match unsupported_variants with
   | [] -> None (* All variants supported *)
   | variants -> Some variants (* Some variants not supported *)
+
+(* Convert behavior type to string for compatibility checking *)
+let behavior_to_string = function
+  | `Boolean_strict -> "boolean_strict"
+  | `Boolean_lenient -> "boolean_lenient"
+  | `Crlf_normalize_to_lf -> "crlf_normalize_to_lf"
+  | `Crlf_preserve_literal -> "crlf_preserve_literal"
+  | `Tabs_preserve -> "tabs_preserve"
+  | `Tabs_to_spaces -> "tabs_to_spaces"
+  | `Strict_spacing -> "strict_spacing"
+  | `Loose_spacing -> "loose_spacing"
+  | `List_coercion_enabled -> "list_coercion_enabled"
+  | `List_coercion_disabled -> "list_coercion_disabled"
+
+(* Check if all required behaviors are supported *)
+let check_test_case_behaviors (test_case : cCLTestFlatFormatTests) =
+  let required_behaviors = List.map behavior_to_string test_case.behaviors in
+  let unsupported_behaviors = List.filter (fun behavior ->
+    not (List.mem behavior Test_capabilities.default_capabilities.behaviors)
+  ) required_behaviors in
+  match unsupported_behaviors with
+  | [] -> None (* All behaviors supported *)
+  | behaviors -> Some behaviors (* Some behaviors not supported *)
 
 (* Run a single test case with capability checking *)
 let run_single_test test_case _capabilities verbose exclude_tests =
@@ -280,7 +443,16 @@ let run_single_test test_case _capabilities verbose exclude_tests =
         if verbose then test_skipped_msg test_case.name reason;
         Skipped reason
     | None ->
-        (* All features supported, check variant compatibility *)
+        (* All features supported, check behavior compatibility *)
+        let behavior_compatibility_result = check_test_case_behaviors test_case in
+        match behavior_compatibility_result with
+        | Some unsupported_behaviors ->
+            let reason = Printf.sprintf "Required behaviors not supported: %s"
+              (String.concat ", " unsupported_behaviors) in
+            if verbose then test_skipped_msg test_case.name reason;
+            Skipped reason
+        | None ->
+        (* All behaviors supported, check variant compatibility *)
         let variant_compatibility_result = check_test_case_variants test_case in
         match variant_compatibility_result with
         | Some unsupported_variants ->

@@ -90,7 +90,7 @@ let default_capabilities = {
     "boolean_strict";          (* Use strict boolean parsing *)
     "strict_spacing";          (* Support strict spacing *)
     "tabs_to_spaces";          (* Convert tabs to spaces *)
-    "list_coercion_disabled";  (* Disable automatic list coercion *)
+    "list_coercion_enabled";   (* OCaml automatically treats duplicate keys as lists *)
     (* "boolean_lenient" -- Not supported, we use strict *)
   ];
   variants = [
