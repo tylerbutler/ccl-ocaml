@@ -60,7 +60,8 @@ let default_test_exclusions =
 let default_capabilities = {
   functions = [
     "parse";                   (* Parser.parse - basic key-value parsing *)
-    "parse_value";             (* Parser.parse_value - parse with prefix calculation *)
+    "parse_value";             (* Parser.parse_value - internal validation name *)
+    "parse_indented";          (* Alias for parse_value - test JSON function name *)
     "build_hierarchy";         (* Model.fix - convert flat entries to nested objects *)
     "pretty_print";            (* Model.pretty - format CCL output *)
     "canonical_format";        (* Model.pretty - canonical format output (same as pretty_print) *)
