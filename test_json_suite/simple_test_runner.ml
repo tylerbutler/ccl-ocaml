@@ -397,6 +397,8 @@ let behavior_to_string = function
   | `Loose_spacing -> "loose_spacing"
   | `List_coercion_enabled -> "list_coercion_enabled"
   | `List_coercion_disabled -> "list_coercion_disabled"
+  | `Array_order_insertion -> "array_order_insertion"
+  | `Array_order_lexicographic -> "array_order_lexicographic"
 
 (* Check if all required behaviors are supported *)
 let check_test_case_behaviors (test_case : cCLTestFlatFormatTests) =

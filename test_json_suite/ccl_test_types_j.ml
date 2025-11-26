@@ -759,6 +759,8 @@ let write_cCLTestFlatFormatTestsBehaviors = (
       | `Loose_spacing -> Buffer.add_string ob "<\"loose_spacing\">"
       | `List_coercion_enabled -> Buffer.add_string ob "<\"list_coercion_enabled\">"
       | `List_coercion_disabled -> Buffer.add_string ob "<\"list_coercion_disabled\">"
+      | `Array_order_insertion -> Buffer.add_string ob "<\"array_order_insertion\">"
+      | `Array_order_lexicographic -> Buffer.add_string ob "<\"array_order_lexicographic\">"
 )
 let string_of_cCLTestFlatFormatTestsBehaviors ?(len = 1024) x =
   let ob = Buffer.create len in
@@ -810,6 +812,14 @@ let read_cCLTestFlatFormatTestsBehaviors = (
               Yojson.Safe.read_space p lb;
               Yojson.Safe.read_gt p lb;
               `List_coercion_disabled
+            | "array_order_insertion" ->
+              Yojson.Safe.read_space p lb;
+              Yojson.Safe.read_gt p lb;
+              `Array_order_insertion
+            | "array_order_lexicographic" ->
+              Yojson.Safe.read_space p lb;
+              Yojson.Safe.read_gt p lb;
+              `Array_order_lexicographic
             | x ->
               Atdgen_runtime.Oj_run.invalid_variant_tag p x
         )
@@ -835,6 +845,10 @@ let read_cCLTestFlatFormatTestsBehaviors = (
               `List_coercion_enabled
             | "list_coercion_disabled" ->
               `List_coercion_disabled
+            | "array_order_insertion" ->
+              `Array_order_insertion
+            | "array_order_lexicographic" ->
+              `Array_order_lexicographic
             | x ->
               Atdgen_runtime.Oj_run.invalid_variant_tag p x
         )

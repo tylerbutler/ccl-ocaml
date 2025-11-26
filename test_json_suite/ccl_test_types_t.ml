@@ -32,7 +32,7 @@ type cCLTestFlatFormatTestsBehaviors = [
     `Boolean_strict | `Boolean_lenient | `Crlf_preserve_literal
   | `Crlf_normalize_to_lf | `Tabs_preserve | `Tabs_to_spaces
   | `Strict_spacing | `Loose_spacing | `List_coercion_enabled
-  | `List_coercion_disabled
+  | `List_coercion_disabled | `Array_order_insertion | `Array_order_lexicographic
 ]
 
 type cCLTestFlatFormatTests = {

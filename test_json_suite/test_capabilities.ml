@@ -92,7 +92,9 @@ let default_capabilities = {
     "strict_spacing";          (* Support strict spacing *)
     "tabs_to_spaces";          (* Convert tabs to spaces *)
     "list_coercion_enabled";   (* OCaml automatically treats duplicate keys as lists *)
+    "array_order_lexicographic"; (* OCaml Map.Make(String) returns keys in lexicographic order *)
     (* "boolean_lenient" -- Not supported, we use strict *)
+    (* "array_order_insertion" -- Not supported, we use lexicographic ordering via Map *)
   ];
   variants = [
     "reference_compliant";     (* OCaml implementation follows reference compliant behavior only *)
