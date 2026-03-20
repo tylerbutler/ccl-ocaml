@@ -117,28 +117,19 @@ clean-build:
     opam exec -- dune build
 
 # Regenerate OCaml types from JSON schema
+# Note: Types are now maintained manually in ccl_test_types_t.ml and ccl_test_types_j.ml
+# (replaced atdgen-generated code with direct Yojson parsing for maintainability).
+# When the schema changes, update:
+#   1. test_json_suite/ccl_test_types_t.ml and ccl_test_types_t.mli (type definitions)
+#   2. test_json_suite/ccl_test_types_j.ml and ccl_test_types_j.mli (JSON parsing)
+#   3. test_json_suite/simple_test_runner.ml (validation execution)
+#   4. test_json_suite/test_capabilities.ml (capability configuration)
 regenerate-types:
-    @echo "🔄 Regenerating OCaml types from JSON schema..."
-    @echo "  🛠️ Preprocessing original schema (addresses jsonschema2atd issues #10, #11, #13)..."
-    jq -f scripts/preprocess-original-schema.jq ../ccl-test-data/schemas/generated-format.json > test_json_suite/preprocessed_schema.json
-    @echo "  📄 Converting preprocessed schema to ATD..."
-    opam exec -- jsonschema2atd test_json_suite/preprocessed_schema.json > test_json_suite/ccl_test_types.atd
-    @echo "  🔧 Post-processing ATD to simplify type names and structure..."
-    sd 'cCLTestCurrentFlatFormatTests' 'test_case' test_json_suite/ccl_test_types.atd
-    sd 'cCLTestCurrentFlatFormatTestsValidation' 'validation_type' test_json_suite/ccl_test_types.atd
-    sd 'cCLTestCurrentFlatFormat' 'test_suite' test_json_suite/ccl_test_types.atd
-    sd '\(\*-flat\.json\)' '(star-flat.json)' test_json_suite/ccl_test_types.atd
-    echo '' >> test_json_suite/ccl_test_types.atd
-    echo 'type root = test_case list' >> test_json_suite/ccl_test_types.atd
-    @echo "  🏗️ Generating OCaml types..."
-    opam exec -- atdgen -t test_json_suite/ccl_test_types.atd
-    @echo "  📦 Generating JSON serialization..."
-    opam exec -- atdgen -j test_json_suite/ccl_test_types.atd
-    @echo "  🔨 Building with new types..."
+    @echo "Note: Types are now maintained manually. See justfile for update instructions."
+    @echo "Schema location: ../ccl-test-data/schemas/generated-format.json"
+    @echo "Building to verify types..."
     opam exec -- dune build
-    @echo "  🧹 Cleaning up temporary files..."
-    rm -f test_json_suite/preprocessed_schema.json
-    @echo "✅ Type regeneration complete!"
+    @echo "Build successful!"
 
 # Generate OCaml test code from a JSON file (advanced usage)
 generate INPUT OUTPUT:

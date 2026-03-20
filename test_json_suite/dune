@@ -1,6 +1,6 @@
 (executable
  (public_name ccl-simple-test)
  (name simple_test_suite)
- (libraries ccl alcotest yojson cmdliner ocolor unix atdgen-runtime)
+ (libraries ccl alcotest yojson cmdliner ocolor unix)
  (modules simple_test_suite test_capabilities test_output simple_test_runner cli_interface ccl_test_types_t ccl_test_types_j))
 

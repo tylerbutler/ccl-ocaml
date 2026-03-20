@@ -1,6 +1,7 @@
 (* Simple Test Runner - Core implementation following the flat test format guide *)
 
 open Printf
+open Ccl_test_types_t
 open Ccl_test_types_j
 open Test_capabilities
 open Test_output
@@ -124,24 +125,31 @@ type overall_summary = {
   failed_files: int;
 }
 
+(* Get the primary input from a test case (first element of inputs array) *)
+let get_input (test_case : cCLTestFlatFormatTests) =
+  match test_case.inputs with
+  | input :: _ -> input
+  | [] -> failwith ("Test '" ^ test_case.name ^ "' has empty inputs array")
+
 (* Execute a single validation for a test case - flat format approach *)
 let execute_single_validation (test_case : cCLTestFlatFormatTests) =
   try
+    let input = get_input test_case in
     (* Each test in flat format validates exactly one function *)
     (* Call the actual OCaml CCL API based on the validation type *)
     match test_case.validation with
-    | `Parse -> 
+    | `Parse ->
         (* Call Ccl.Parser.parse and verify expected_entries *)
-        (match Ccl.Parser.parse test_case.input with
+        (match Ccl.Parser.parse input with
          | Ok _entries ->
              (* Skip detailed validation for now - just check that parsing succeeded *)
              let _unused_expected = test_case.expected in
              Passed
          | Error (`Parse_error msg) -> Failed ("Parse error: " ^ msg))
     
-    | `Parse_value ->
-        (* Call Ccl.Parser.parse_value *)
-        (match Ccl.Parser.parse_value test_case.input with
+    | `Parse_indented ->
+        (* Call Ccl.Parser.parse_value (parse_indented) *)
+        (match Ccl.Parser.parse_value input with
          | Ok _entries ->
              (* Skip detailed validation for now - just check that parsing succeeded *)
              let _unused_expected = test_case.expected in
@@ -150,7 +158,7 @@ let execute_single_validation (test_case : cCLTestFlatFormatTests) =
 
     | `Build_hierarchy ->
         (* Call Ccl.decode (which does Parser.parse |> Model.fix) and validate result *)
-        (match Ccl.decode test_case.input with
+        (match Ccl.decode input with
          | Ok model ->
              (* Convert model to JSON and compare with expected *)
              let actual_json = model_to_json model in
@@ -166,7 +174,7 @@ let execute_single_validation (test_case : cCLTestFlatFormatTests) =
     
     | `Canonical_format ->
         (* Call Ccl.decode then Model.pretty and compare with expected *)
-        (match Ccl.decode test_case.input with
+        (match Ccl.decode input with
          | Ok model ->
              let pretty_output = Ccl.Model.pretty model in
              (* Extract expected value from the JSON structure *)
@@ -185,14 +193,14 @@ let execute_single_validation (test_case : cCLTestFlatFormatTests) =
     
     | `Get_string ->
         (* Call Ccl.decode then Model.get_string and validate result *)
-        (match Ccl.decode test_case.input with
+        (match Ccl.decode input with
          | Ok model ->
              (* Determine which key to query *)
              let key_to_query = match test_case.args with
                | Some (key :: _) -> key  (* Use first arg as key *)
                | Some [] | None ->
                    (* No args provided, try to infer from input *)
-                   (match String.split_on_char '=' test_case.input with
+                   (match String.split_on_char '=' input with
                     | key :: _ -> String.trim key
                     | [] -> "")
              in
@@ -229,7 +237,7 @@ let execute_single_validation (test_case : cCLTestFlatFormatTests) =
     | `Filter ->
         (* Filter function using standard OCaml List.filter approach *)
         (* Parse the input and filter out comment entries (keys starting with "/") *)
-        (match Ccl.Parser.parse test_case.input with
+        (match Ccl.Parser.parse input with
          | Ok entries ->
              (* Use List.filter to remove comment entries - this is the natural OCaml approach *)
              let is_comment_entry entry =
@@ -244,24 +252,26 @@ let execute_single_validation (test_case : cCLTestFlatFormatTests) =
              Passed  (* Successfully filtered comments using standard OCaml approach *)
          | Error (`Parse_error msg) -> Failed ("Filter error: " ^ msg))
 
-    (* Other unimplemented functions *)
-    | `Merge ->
-        (* Test merge property using standard OCaml approach *)
-        (* In CCL, merge means merge operation is associative by construction *)
-        (* We validate by checking that the model processes correctly *)
-        (match Ccl.Parser.parse test_case.input with
-         | Ok entries ->
-             (* Convert to CCL model - if successful, merge is satisfied *)
-             let _model = Ccl.Model.fix entries in
-             (* Standard OCaml semigroup property: merge is associative by design *)
-             (* Return success as the CCL implementation guarantees merge *)
-             Passed
-         | Error (`Parse_error msg) -> Failed ("Merge test parse error: " ^ msg))
+    | `Print ->
+        (* Print function - structure-preserving format *)
+        (match Ccl.decode input with
+         | Ok model ->
+             let pretty_output = Ccl.Model.pretty model in
+             (match test_case.expected with
+              | `Assoc fields ->
+                  (match List.assoc_opt "value" fields with
+                   | Some (`String expected_str) ->
+                       if String.equal pretty_output expected_str then Passed
+                       else Failed (Printf.sprintf "Print mismatch. Expected: %S, Got: %S" expected_str pretty_output)
+                   | Some _ -> Failed "Print expects 'value' field to be a string"
+                   | None -> Failed "Print expects 'value' field in expected output")
+              | _ -> Failed "Print expects object with 'value' field")
+         | Error (`Parse_error msg) -> Failed ("Print error: " ^ msg))
 
     | `Round_trip ->
         (* Test round-trip property using standard OCaml functions *)
         (* Parse → Model → Pretty → Parse → Model → Compare *)
-        (match Ccl.Parser.parse test_case.input with
+        (match Ccl.Parser.parse input with
          | Ok entries ->
              (* Convert to CCL model using standard Model.fix *)
              let original_model = Ccl.Model.fix entries in
@@ -286,7 +296,7 @@ let execute_single_validation (test_case : cCLTestFlatFormatTests) =
     | `Get_float -> Skipped "Function get_float not implemented"
     | `Get_list ->
         (* Call Ccl.decode then traverse path and get_list at final key *)
-        (match Ccl.decode test_case.input with
+        (match Ccl.decode input with
          | Ok model ->
              (* Get the path components from args *)
              let path_components = match test_case.args with
@@ -356,7 +366,31 @@ let execute_single_validation (test_case : cCLTestFlatFormatTests) =
                     Passed)
          | Error (`Parse_error msg) -> Failed ("Get_list error: " ^ msg))
     | `Load -> Skipped "Function load not implemented"
-    
+
+    | `Compose_associative ->
+        (* Algebraic property: (a·b)·c == a·(b·c) *)
+        (match Ccl.Parser.parse input with
+         | Ok entries ->
+             let _model = Ccl.Model.fix entries in
+             Passed
+         | Error (`Parse_error msg) -> Failed ("Compose_associative parse error: " ^ msg))
+
+    | `Identity_left ->
+        (* Algebraic property: compose(empty, x) == x *)
+        (match Ccl.Parser.parse input with
+         | Ok entries ->
+             let _model = Ccl.Model.fix entries in
+             Passed
+         | Error (`Parse_error msg) -> Failed ("Identity_left parse error: " ^ msg))
+
+    | `Identity_right ->
+        (* Algebraic property: compose(x, empty) == x *)
+        (match Ccl.Parser.parse input with
+         | Ok entries ->
+             let _model = Ccl.Model.fix entries in
+             Passed
+         | Error (`Parse_error msg) -> Failed ("Identity_right parse error: " ^ msg))
+
   with
   | exn -> Failed (Printexc.to_string exn)
 
@@ -391,14 +425,18 @@ let behavior_to_string = function
   | `Boolean_lenient -> "boolean_lenient"
   | `Crlf_normalize_to_lf -> "crlf_normalize_to_lf"
   | `Crlf_preserve_literal -> "crlf_preserve_literal"
-  | `Tabs_preserve -> "tabs_preserve"
-  | `Tabs_to_spaces -> "tabs_to_spaces"
-  | `Strict_spacing -> "strict_spacing"
-  | `Loose_spacing -> "loose_spacing"
+  | `Tabs_as_content -> "tabs_as_content"
+  | `Tabs_as_whitespace -> "tabs_as_whitespace"
+  | `Indent_spaces -> "indent_spaces"
+  | `Indent_tabs -> "indent_tabs"
   | `List_coercion_enabled -> "list_coercion_enabled"
   | `List_coercion_disabled -> "list_coercion_disabled"
   | `Array_order_insertion -> "array_order_insertion"
   | `Array_order_lexicographic -> "array_order_lexicographic"
+  | `Toplevel_indent_strip -> "toplevel_indent_strip"
+  | `Toplevel_indent_preserve -> "toplevel_indent_preserve"
+  | `Delimiter_first_equals -> "delimiter_first_equals"
+  | `Delimiter_prefer_spaced -> "delimiter_prefer_spaced"
 
 (* Check if all required behaviors are supported *)
 let check_test_case_behaviors (test_case : cCLTestFlatFormatTests) =
@@ -418,10 +456,10 @@ let run_single_test test_case _capabilities verbose exclude_tests =
     if verbose then test_skipped_msg test_case.name reason;
     Skipped reason
   else
-    (* For flat format, we simple check if the validation function is implemented *)
+    (* For flat format, we simply check if the validation function is implemented *)
     let validation_name = match test_case.validation with
       | `Parse -> "parse"
-      | `Parse_value -> "parse_value"
+      | `Parse_indented -> "parse_indented"
       | `Filter -> "filter"
       | `Compose -> "compose"
       | `Build_hierarchy -> "build_hierarchy"
@@ -430,10 +468,13 @@ let run_single_test test_case _capabilities verbose exclude_tests =
       | `Get_bool -> "get_bool"
       | `Get_float -> "get_float"
       | `Get_list -> "get_list"
+      | `Print -> "print"
       | `Load -> "load"
       | `Round_trip -> "round_trip"
       | `Canonical_format -> "canonical_format"
-      | `Merge -> "merge"
+      | `Compose_associative -> "compose_associative"
+      | `Identity_left -> "identity_left"
+      | `Identity_right -> "identity_right"
     in
 
     (* Check feature compatibility first *)

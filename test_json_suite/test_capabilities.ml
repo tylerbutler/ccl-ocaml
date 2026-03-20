@@ -15,19 +15,16 @@ type test_capabilities = {
 (* BUG-001: Parser Multiline Handling Incomplete *)
 (* See reports/BUG-001-parser-multiline-handling.md *)
 let bug_001_multiline_parsing = [
-  "multiline_section_header_value_parse_value";
-  "unindented_multiline_becomes_continuation_parse_value";
-  "list_multiline_values_parse_value";
-  "complex_mixed_list_scenarios_parse_value";
+  "multiline_section_header_value_parse_indented";
+  "unindented_multiline_becomes_continuation_parse_indented";
+  "list_multiline_values_parse_indented";
+  "complex_mixed_list_scenarios_parse_indented";
 ]
 
 (* BUG-002: Missing Typed Access Functions *)
 (* See reports/BUG-002-missing-typed-access-functions.md *)
+(* Note: get_int, get_bool, get_float are unimplemented and auto-skipped by capability check *)
 let bug_002_missing_typed_functions = [
-  "parse_integer_values_get_int";
-  "type_conversion_edge_cases_get_int";
-  "parse_boolean_values_get_bool";
-  "parse_float_values_get_float";
   "parse_missing_path_error_get_string";
 ]
 
@@ -60,22 +57,18 @@ let default_test_exclusions =
 let default_capabilities = {
   functions = [
     "parse";                   (* Parser.parse - basic key-value parsing *)
-    "parse_value";             (* Parser.parse_value - internal validation name *)
-    "parse_indented";          (* Alias for parse_value - test JSON function name *)
+    "parse_indented";          (* Parser.parse_value - indented/value parsing *)
     "build_hierarchy";         (* Model.fix - convert flat entries to nested objects *)
-    "pretty_print";            (* Model.pretty - format CCL output *)
-    "print";                   (* Structure-preserving format - requires implementation *)
-    "canonical_format";        (* Model.pretty - canonical format output (same as pretty_print) *)
+    "print";                   (* Model.pretty - structure-preserving format *)
+    "canonical_format";        (* Model.pretty - canonical format output *)
     "get_string";              (* Model.get_string - extract string values by path *)
     "get_list";                (* Model.get_list - extract list values by path *)
-    "filter";                  (* IMPLEMENTED: Standard OCaml List.filter approach for comment removal *)
-    "merge";                   (* IMPLEMENTED: Standard OCaml merge operation using Model.merge and compare *)
-    "round_trip";              (* IMPLEMENTED: Standard OCaml round-trip property testing using parse → fix → pretty → parse → compare *)
+    "filter";                  (* Standard OCaml List.filter approach for comment removal *)
+    "round_trip";              (* Round-trip property testing: parse → fix → pretty → parse → compare *)
     "compose_associative";     (* Algebraic property: (a·b)·c == a·(b·c) *)
     "identity_left";           (* Algebraic property: compose(empty, x) == x *)
     "identity_right";          (* Algebraic property: compose(x, empty) == x *)
-    (* Unimplemented: get_int, get_bool, get_float, compose *)
-    (* "expand_dotted"; -- Not implemented yet *)
+    (* Unimplemented: get_int, get_bool, get_float, compose, load *)
   ];
   features = [
     (* Core features - all confirmed working in OCaml reference implementation *)
@@ -90,15 +83,15 @@ let default_capabilities = {
     (* "dotted_keys" - not in core feature list *)
   ];
   behaviors = [
-    (* "crlf_normalize_to_lf" -- REMOVED: OCaml implementation actually preserves CRLF *)
-    "crlf_preserve_literal";   (* We preserve CRLF in literals - confirmed by reference_compliant tests *)
+    "crlf_preserve_literal";   (* We preserve CRLF in literals *)
     "boolean_strict";          (* Use strict boolean parsing *)
-    "strict_spacing";          (* Support strict spacing *)
-    "tabs_to_spaces";          (* Convert tabs to spaces *)
+    "tabs_as_whitespace";      (* Treat tabs as whitespace *)
+    "indent_spaces";           (* Use spaces for indentation *)
     "list_coercion_enabled";   (* OCaml automatically treats duplicate keys as lists *)
     "array_order_lexicographic"; (* OCaml Map.Make(String) returns keys in lexicographic order *)
-    (* "boolean_lenient" -- Not supported, we use strict *)
-    (* "array_order_insertion" -- Not supported, we use lexicographic ordering via Map *)
+    "toplevel_indent_strip";   (* Strip toplevel indentation *)
+    "delimiter_prefer_spaced"; (* Prefer spaced delimiters in output *)
+    (* Not supported: boolean_lenient, array_order_insertion, indent_tabs, tabs_as_content *)
   ];
   variants = [
     "reference_compliant";     (* OCaml implementation follows reference compliant behavior only *)
