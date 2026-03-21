@@ -64,15 +64,17 @@ The test runner bridges OCaml implementation with the official language-agnostic
 - **`test_capabilities.ml`** - Configuration of implemented functions/features/behaviors
 - **`simple_test_runner.ml`** - Core test execution engine with capability-based filtering
 - **`cli_interface.ml`** - Cmdliner-based CLI interface
-- **`ccl_test_types.atd`** - ATD type definitions for JSON test schema
+- **`ccl_test_types_t.ml`** - Type definitions for JSON test schema (manually maintained)
+- **`ccl_test_types_j.ml`** - Yojson-based JSON deserialization (manually maintained)
 
 **Capability System:**
-- **Functions:** `parse`, `build_hierarchy`, `get_string`, `get_list`, etc.
-- **Features:** `comments`, `empty_keys` (dotted_keys not yet implemented)
-- **Behaviors:** `crlf_normalize_to_lf`, `boolean_strict`, `list_coercion_disabled`
+- **Functions:** `parse`, `parse_indented`, `build_hierarchy`, `canonical_format`, `get_string`, `get_list`, `filter`, `round_trip`, `compose_associative`, `identity_left`, `identity_right`
+- **Features:** `empty_keys`, `comments`, `whitespace`, `unicode`, `multiline`
+- **Behaviors:** `crlf_preserve_literal`, `boolean_strict`, `tabs_as_whitespace`, `indent_spaces`, `list_coercion_enabled`, `array_order_lexicographic`, `toplevel_indent_strip`
+- **Not supported:** `print` (ref impl only has canonical_format), `delimiter_prefer_spaced`, `indent_tabs`, `tabs_as_content`
 
 ### External Integration
-- **ccl-test-data/** - Official JSON test suite (452 assertions across 167 tests)
+- **../ccl-test-data/** - Official JSON test suite (876 tests across 18 files, sibling repo)
 - Test runner automatically skips tests for unimplemented capabilities
 
 ## Development Patterns
@@ -86,7 +88,7 @@ The test runner bridges OCaml implementation with the official language-agnostic
 ### Test Runner Development
 1. Modify test execution logic in `simple_test_runner.ml`
 2. Update CLI interface in `cli_interface.ml` if needed
-3. Regenerate types with `just regenerate-types` if schema changes
+3. When the upstream schema changes, manually update `ccl_test_types_t.ml` + `.mli` (types) and `ccl_test_types_j.ml` + `.mli` (JSON parsing)
 4. Test with `just health-check` for quick validation
 
 ### Updating Capabilities
@@ -95,10 +97,17 @@ Edit `test_json_suite/test_capabilities.ml`:
 - **features:** Add support for language features (comments, dotted_keys, etc.)
 - **behaviors:** Configure runtime behavior settings
 
+## Reference Implementation Notes
+
+This is the **reference implementation** of CCL. When tests fail, determine whether it's a test tagging issue (file against ccl-test-data) rather than changing the implementation.
+- `Model.pretty` is `canonical_format`, NOT `print` (structure-preserving print is a different function)
+- Uses `Map.Make(String)` so all output is lexicographic order (`array_order_lexicographic`)
+- Parser splits on all `=` signs (does not support `delimiter_prefer_spaced`)
+- Known test data issues tracked in github.com/CatConfLang/ccl-test-data/issues
+
 ## Current Implementation Status
 
-**Working:** Comment parsing, basic algebraic properties, core parsing functions
-**In Progress:** Full API parsing, object construction, typed access functions
-**Not Implemented:** Dotted keys, advanced processing operations
+**Working:** Parsing, hierarchy construction, canonical format, get_string/get_list with path traversal, comment filtering, algebraic properties (round_trip, compose_associative, identity)
+**Not Implemented:** get_int, get_bool, get_float, compose, load, print (structure-preserving), dotted keys
 
 The test runner provides detailed capability-based filtering to run only tests for implemented features, enabling progressive development without breaking the workflow.
