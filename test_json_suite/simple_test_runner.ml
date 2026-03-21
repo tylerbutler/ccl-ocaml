@@ -192,46 +192,48 @@ let execute_single_validation (test_case : cCLTestFlatFormatTests) =
          | Error (`Parse_error msg) -> Failed ("Canonical_format error: " ^ msg))
     
     | `Get_string ->
-        (* Call Ccl.decode then Model.get_string and validate result *)
+        (* Call Ccl.decode then traverse path and get_string at final key *)
         (match Ccl.decode input with
          | Ok model ->
-             (* Determine which key to query *)
-             let key_to_query = match test_case.args with
-               | Some (key :: _) -> key  (* Use first arg as key *)
-               | Some [] | None ->
-                   (* No args provided, try to infer from input *)
-                   (match String.split_on_char '=' input with
-                    | key :: _ -> String.trim key
-                    | [] -> "")
+             let path_components = match test_case.args with
+               | Some args -> args
+               | None -> []
              in
 
-             (* Call get_string with the determined key *)
-             let actual_result = Ccl.Model.get_string model key_to_query in
+             (* Traverse path to reach the target, then get_string on final key *)
+             let rec traverse_and_get current_model = function
+               | [] -> None  (* No path - can't get string from root *)
+               | [final_key] ->
+                   Ccl.Model.get_string current_model final_key
+               | key :: rest ->
+                   let (Ccl.Model.Fix map) = current_model in
+                   (match Ccl.Model.KeyMap.find_opt key map with
+                    | Some nested_model -> traverse_and_get nested_model rest
+                    | None -> None)
+             in
+
+             let actual_result = traverse_and_get model path_components in
+             let path_str = String.concat "." path_components in
 
              (* Check against expected value *)
              (match extract_expected_string test_case.expected with
               | Some (Some expected_str) ->
-                  (* Expected a specific string value *)
                   (match actual_result with
                    | Some actual_str when actual_str = expected_str -> Passed
                    | Some actual_str ->
-                       Failed (Printf.sprintf "Expected '%s', got '%s' for key '%s'"
-                               expected_str actual_str key_to_query)
+                       Failed (Printf.sprintf "Expected '%s', got '%s' for path '%s'"
+                               expected_str actual_str path_str)
                    | None ->
-                       Failed (Printf.sprintf "Key '%s' not found, expected '%s'"
-                               key_to_query expected_str))
+                       Failed (Printf.sprintf "Path '%s' not found, expected '%s'"
+                               path_str expected_str))
               | Some None ->
-                  (* Expected null/not found *)
                   (match actual_result with
                    | None -> Passed
                    | Some actual_str ->
-                       Failed (Printf.sprintf "Expected null, got '%s' for key '%s'"
-                               actual_str key_to_query))
+                       Failed (Printf.sprintf "Expected null, got '%s' for path '%s'"
+                               actual_str path_str))
               | None ->
-                  (* No expected value specified, just check function call succeeded *)
-                  (match actual_result with
-                   | Some _ -> Passed
-                   | None -> Passed))  (* Both outcomes acceptable when no expectation *)
+                  Passed)
          | Error (`Parse_error msg) -> Failed ("Get_string error: " ^ msg))
 
     | `Filter ->
