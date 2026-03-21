@@ -59,8 +59,8 @@ let default_capabilities = {
     "parse";                   (* Parser.parse - basic key-value parsing *)
     "parse_indented";          (* Parser.parse_value - indented/value parsing *)
     "build_hierarchy";         (* Model.fix - convert flat entries to nested objects *)
-    "print";                   (* Model.pretty - structure-preserving format *)
     "canonical_format";        (* Model.pretty - canonical format output *)
+    (* "print" — not supported; ref impl only has canonical format (Model.pretty) *)
     "get_string";              (* Model.get_string - extract string values by path *)
     "get_list";                (* Model.get_list - extract list values by path *)
     "filter";                  (* Standard OCaml List.filter approach for comment removal *)
@@ -90,8 +90,7 @@ let default_capabilities = {
     "list_coercion_enabled";   (* OCaml automatically treats duplicate keys as lists *)
     "array_order_lexicographic"; (* OCaml Map.Make(String) returns keys in lexicographic order *)
     "toplevel_indent_strip";   (* Strip toplevel indentation *)
-    "delimiter_prefer_spaced"; (* Prefer spaced delimiters in output *)
-    (* Not supported: boolean_lenient, array_order_insertion, indent_tabs, tabs_as_content *)
+    (* Not supported: delimiter_prefer_spaced (splits on all =), boolean_lenient, array_order_insertion, indent_tabs, tabs_as_content *)
   ];
   variants = [
     "reference_compliant";     (* OCaml implementation follows reference compliant behavior only *)
